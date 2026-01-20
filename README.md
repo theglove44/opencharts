@@ -2,7 +2,7 @@
 
 A feature-rich, open-source, browser-based candlestick charting application with multiple symbols, technical indicators, and real-time updates. Built with SvelteKit, Fastify, and TradingView Lightweight Charts.
 
-![OSS Charts Screenshot](docs/screenshot.png)
+![OSS Charts Screenshot](docs/screenshot1.png)
 
 ## Features
 
