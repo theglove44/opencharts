@@ -704,7 +704,7 @@
 </script>
 
 <svelte:head>
-  <title>OSS Charts</title>
+  <title>OpenCharts</title>
 </svelte:head>
 
 <svelte:window on:keydown={handleKeydown} />
@@ -713,7 +713,7 @@
   <header class="topbar">
     <div class="topbar-left">
       <div class="brand">
-        <span class="logo">OSS Charts</span>
+        <span class="logo">OpenCharts</span>
         <select class="symbol-select" bind:value={symbol} on:change={() => setSymbol(symbol)}>
           {#each availableSymbols as sym}
             <option value={sym}>{sym}</option>
