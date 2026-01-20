@@ -8,9 +8,7 @@ export type IndicatorType =
   | 'macd'
   | 'macdSignal'
   | 'macdHistogram'
-  | 'bollingerUpper'
-  | 'bollingerMiddle'
-  | 'bollingerLower'
+  | 'bollinger'
   | 'volume'
   | 'volumeMA'
   | 'atr';
@@ -36,6 +34,7 @@ export type IndicatorInstance = {
 export type IndicatorPoint = {
   timestamp: number;
   value: number;
+  [key: string]: number | undefined;
 };
 
 export type IndicatorCompute = (candles: Candle[], params: IndicatorParams) => IndicatorPoint[];
@@ -45,6 +44,7 @@ export type IndicatorDefinition = {
   name: string;
   pane: IndicatorPane;
   defaultParams: IndicatorParams;
+  lines?: string[];
   label: (params: IndicatorParams) => string;
   compute: IndicatorCompute;
 };

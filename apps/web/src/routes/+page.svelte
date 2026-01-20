@@ -10,13 +10,13 @@
     toCandlestickData,
     toCandlestickPoint,
     toLineData,
-    toLocalInputValue
+    toLocalInputValue,
   } from '$lib/chart-helpers';
   import {
     indicatorRegistry,
     type IndicatorDefinition,
     type IndicatorInstance,
-    type IndicatorType
+    type IndicatorType,
   } from '@oss-charts/indicators';
   import { fetchCandles, fetchLatestPrice, fetchSymbols } from '$lib/api';
 
@@ -82,7 +82,7 @@
             if (Array.isArray(parsed)) {
               indicators = parsed.map((ind: IndicatorInstance) => ({
                 ...ind,
-                id: ind.id || createId()
+                id: ind.id || createId(),
               }));
             }
           } catch {
@@ -92,7 +92,7 @@
         if (indicators.length === 0) {
           indicators = [
             { id: createId(), type: 'sma', params: { length: 20, source: 'close' } },
-            { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } }
+            { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } },
           ];
         }
         return;
@@ -102,11 +102,15 @@
       if (!raw) {
         indicators = [
           { id: createId(), type: 'sma', params: { length: 20, source: 'close' } },
-          { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } }
+          { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } },
         ];
         return;
       }
-      const parsed = JSON.parse(raw) as { timeframe: Timeframe; symbol: string; indicators: IndicatorInstance[] };
+      const parsed = JSON.parse(raw) as {
+        timeframe: Timeframe;
+        symbol: string;
+        indicators: IndicatorInstance[];
+      };
       timeframe = parsed.timeframe ?? timeframe;
       symbol = parsed.symbol ?? symbol;
       indicators = parsed.indicators ?? indicators;
@@ -121,8 +125,8 @@
       JSON.stringify({
         timeframe,
         symbol,
-        indicators
-      })
+        indicators,
+      }),
     );
   }
 
@@ -168,8 +172,8 @@
       indicators: indicators.map(({ type, params }) => ({
         id: createId(),
         type,
-        params: { ...params }
-      }))
+        params: { ...params },
+      })),
     };
     if (existing >= 0) {
       savedPresets[existing] = preset;
@@ -184,7 +188,7 @@
   async function loadPreset(preset: { name: string; indicators: IndicatorInstance[] }) {
     indicators = preset.indicators.map((ind) => ({
       ...ind,
-      id: createId()
+      id: createId(),
     }));
     await tick();
     resetRsiChart();
@@ -204,7 +208,6 @@
       : `id-${Math.random().toString(36).slice(2, 9)}`;
   }
 
-
   function buildChart(container: HTMLDivElement) {
     if (!createChartFn || !crosshairModeRef) {
       throw new Error('Chart library not loaded');
@@ -213,29 +216,29 @@
       layout: {
         background: { color: 'transparent' },
         textColor: '#e2e8f0',
-        fontFamily: 'Space Grotesk, sans-serif'
+        fontFamily: 'Space Grotesk, sans-serif',
       },
       grid: {
         vertLines: { color: 'rgba(148, 163, 184, 0.15)' },
-        horzLines: { color: 'rgba(148, 163, 184, 0.15)' }
+        horzLines: { color: 'rgba(148, 163, 184, 0.15)' },
       },
       timeScale: {
         timeVisible: true,
-        secondsVisible: false
+        secondsVisible: false,
       },
       rightPriceScale: {
-        borderVisible: false
+        borderVisible: false,
       },
       crosshair: {
-        mode: crosshairModeRef.Magnet
-      }
+        mode: crosshairModeRef.Magnet,
+      },
     });
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         chartApi.applyOptions({
           width: entry.contentRect.width,
-          height: entry.contentRect.height
+          height: entry.contentRect.height,
         });
       }
     });
@@ -270,26 +273,32 @@
     indicators.forEach((indicator, index) => {
       const def = indicatorRegistry[indicator.type];
       const color = palette[index % palette.length];
-      if (def.pane === 'overlay') {
-        const series = chart.addLineSeries({
-          color,
-          lineWidth: 2,
-          priceLineVisible: false,
-          lastValueVisible: false
-        });
-        overlaySeries.set(indicator.id, series);
-      } else {
-        if (!rsiChart || !rsiContainer) {
-          return;
+      const lines = def.lines || ['default'];
+
+      lines.forEach((line) => {
+        const seriesKey = lines.length > 1 ? `${indicator.id}-${line}` : indicator.id;
+
+        if (def.pane === 'overlay') {
+          const series = chart.addLineSeries({
+            color,
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+          });
+          overlaySeries.set(seriesKey, series);
+        } else {
+          if (!rsiChart || !rsiContainer) {
+            return;
+          }
+          const series = rsiChart.addLineSeries({
+            color,
+            lineWidth: 2,
+            priceLineVisible: false,
+            lastValueVisible: false,
+          });
+          rsiSeries.set(seriesKey, series);
         }
-        const series = rsiChart.addLineSeries({
-          color,
-          lineWidth: 2,
-          priceLineVisible: false,
-          lastValueVisible: false
-        });
-        rsiSeries.set(indicator.id, series);
-      }
+      });
     });
 
     updateIndicatorData();
@@ -299,15 +308,29 @@
     indicators.forEach((indicator) => {
       const def = indicatorRegistry[indicator.type];
       const values = def.compute(candles, indicator.params);
-      const seriesData = toLineData(values);
-      if (seriesData.length === 0) {
-        return;
-      }
-      if (def.pane === 'overlay') {
-        overlaySeries.get(indicator.id)?.setData(seriesData);
-      } else {
-        rsiSeries.get(indicator.id)?.setData(seriesData);
-      }
+      const lines = def.lines || ['default'];
+
+      lines.forEach((line) => {
+        const seriesKey = lines.length > 1 ? `${indicator.id}-${line}` : indicator.id;
+
+        const seriesData = toLineData(
+          values.map((point) => ({
+            timestamp: point.timestamp,
+            value:
+              line === 'default' || line === 'value' ? point.value : (point[line] ?? point.value),
+          })),
+        );
+
+        if (seriesData.length === 0) {
+          return;
+        }
+
+        if (def.pane === 'overlay') {
+          overlaySeries.get(seriesKey)?.setData(seriesData);
+        } else {
+          rsiSeries.get(seriesKey)?.setData(seriesData);
+        }
+      });
     });
   }
 
@@ -334,7 +357,7 @@
     const { chartApi } = buildChart(rsiContainer);
     rsiChart = chartApi;
     rsiChart.priceScale('right').applyOptions({
-      scaleMargins: { top: 0.2, bottom: 0.2 }
+      scaleMargins: { top: 0.2, bottom: 0.2 },
     });
     applyCrosshairMode();
 
@@ -413,7 +436,7 @@
         ...last,
         close: latest.price,
         high: Math.max(last.high, latest.price),
-        low: Math.min(last.low, latest.price)
+        low: Math.min(last.low, latest.price),
       };
 
       candles = [...candles.slice(0, -1), updated];
@@ -431,8 +454,8 @@
       {
         id: createId(),
         type: def.type,
-        params: { ...def.defaultParams }
-      }
+        params: { ...def.defaultParams },
+      },
     ];
     await tick();
     resetRsiChart();
@@ -453,7 +476,7 @@
 
   function updateIndicator(id: string, updater: (current: IndicatorInstance) => IndicatorInstance) {
     indicators = indicators.map((indicator) =>
-      indicator.id === id ? updater(indicator) : indicator
+      indicator.id === id ? updater(indicator) : indicator,
     );
     rebuildIndicators();
     saveState();
@@ -467,7 +490,7 @@
     const length = Number(target.value);
     updateIndicator(id, (current) => ({
       ...current,
-      params: { ...current.params, length }
+      params: { ...current.params, length },
     }));
   }
 
@@ -478,7 +501,7 @@
     }
     updateIndicator(id, (current) => ({
       ...current,
-      params: { ...current.params, source: target.value as PriceSource }
+      params: { ...current.params, source: target.value as PriceSource },
     }));
   }
 
@@ -489,7 +512,7 @@
     }
     updateIndicator(id, (current) => ({
       ...current,
-      params: { ...current.params, anchorIso: target.value }
+      params: { ...current.params, anchorIso: target.value },
     }));
     if (anchorPickId === id) {
       anchorPickId = null;
@@ -544,11 +567,8 @@
       case 'macdSignal':
       case 'macdHistogram':
         return `MACD(${params.macdFast ?? 12}, ${params.macdSlow ?? 26}, ${params.macdSignal ?? 9}): Fast EMA - Slow EMA`;
-      case 'bollingerUpper':
-      case 'bollingerLower':
-        return `Bollinger Band: SMA(${params.length}) ± ${params.stdDev ?? 2} × σ`;
-      case 'bollingerMiddle':
-        return `Bollinger Middle: SMA(${params.length})`;
+      case 'bollinger':
+        return `Bollinger Bands: SMA(${params.length}) ± ${params.stdDev ?? 2} × σ`;
       case 'atr':
         return `Average True Range: Smoothed average of max(H-L, |H-Cp|, |L-Cp|) over ${params.length} periods`;
       case 'volume':
@@ -595,7 +615,7 @@
       '3': '10m',
       '4': '30m',
       '5': '60m',
-      '6': '1d'
+      '6': '1d',
     };
 
     if (tfMap[key]) {
@@ -638,7 +658,7 @@
       wickUpColor: '#22c55e',
       wickDownColor: '#ef4444',
       lastValueVisible: true,
-      priceLineVisible: true
+      priceLineVisible: true,
     });
     applyCrosshairMode();
 
@@ -654,7 +674,7 @@
           high: candle.high,
           low: candle.low,
           close: candle.close,
-          volume: 0
+          volume: 0,
         };
       }
     });
@@ -674,7 +694,7 @@
       }
       updateIndicator(anchorPickId, (current) => ({
         ...current,
-        params: { ...current.params, anchorIso: toLocalInputValue(timestampMs) }
+        params: { ...current.params, anchorIso: toLocalInputValue(timestampMs) },
       }));
       anchorPickId = null;
     });
@@ -735,11 +755,29 @@
         {#if crosshair}
           <span class="last-bar">Last bar {lastBarUpdatedAt}</span>
           <span class="ohlc-time">{formatTimestamp(crosshair.timestamp)}</span>
-          <span class="ohlc-value"><span class="ohlc-label">O</span><span class="ohlc-price">{crosshair.open.toFixed(2)}</span></span>
-          <span class="ohlc-value ohlc-high"><span class="ohlc-label">H</span><span class="ohlc-price">{crosshair.high.toFixed(2)}</span></span>
-          <span class="ohlc-value ohlc-low"><span class="ohlc-label">L</span><span class="ohlc-price">{crosshair.low.toFixed(2)}</span></span>
-          <span class="ohlc-value" class:ohlc-up={crosshair.close >= crosshair.open} class:ohlc-down={crosshair.close < crosshair.open}>
-            <span class="ohlc-label">C</span><span class="ohlc-price">{crosshair.close.toFixed(2)}</span>
+          <span class="ohlc-value"
+            ><span class="ohlc-label">O</span><span class="ohlc-price"
+              >{crosshair.open.toFixed(2)}</span
+            ></span
+          >
+          <span class="ohlc-value ohlc-high"
+            ><span class="ohlc-label">H</span><span class="ohlc-price"
+              >{crosshair.high.toFixed(2)}</span
+            ></span
+          >
+          <span class="ohlc-value ohlc-low"
+            ><span class="ohlc-label">L</span><span class="ohlc-price"
+              >{crosshair.low.toFixed(2)}</span
+            ></span
+          >
+          <span
+            class="ohlc-value"
+            class:ohlc-up={crosshair.close >= crosshair.open}
+            class:ohlc-down={crosshair.close < crosshair.open}
+          >
+            <span class="ohlc-label">C</span><span class="ohlc-price"
+              >{crosshair.close.toFixed(2)}</span
+            >
           </span>
         {:else}
           <span class="ohlc-waiting">Waiting for data</span>
@@ -764,9 +802,7 @@
       </button>
 
       <div class="presets-menu">
-        <button class="toolbar-btn" on:click={() => (showPresets = !showPresets)}>
-          Presets
-        </button>
+        <button class="toolbar-btn" on:click={() => (showPresets = !showPresets)}> Presets </button>
         {#if showPresets}
           <div class="panel presets-panel">
             <div class="panel-header">Indicator Presets</div>
@@ -923,7 +959,6 @@
         </div>
       {/if}
     </section>
-
   </main>
 
   <footer class="footer">
@@ -1124,7 +1159,9 @@
     flex-direction: column;
     flex: 1;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    transition:
+      border-color 0.2s ease,
+      box-shadow 0.2s ease;
   }
 
   .chart-card:hover {
@@ -1187,7 +1224,9 @@
     color: var(--indicator-color);
     font-weight: 500;
     cursor: help;
-    transition: background 0.15s ease, transform 0.1s ease;
+    transition:
+      background 0.15s ease,
+      transform 0.1s ease;
   }
 
   .legend-item:hover {

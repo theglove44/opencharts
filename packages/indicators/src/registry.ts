@@ -4,7 +4,7 @@ import { calculateRSI } from './indicators/rsi';
 import { calculateSMA } from './indicators/sma';
 import { calculateAnchoredVWAP } from './indicators/vwap';
 import { calculateMACD, calculateMACDSignal, calculateMACDHistogram } from './indicators/macd';
-import { calculateBollingerUpper, calculateBollingerMiddle, calculateBollingerLower } from './indicators/bollinger';
+import { calculateBollinger } from './indicators/bollinger';
 import { calculateVolume, calculateVolumeMA } from './indicators/volume';
 import { calculateATR } from './indicators/atr';
 
@@ -68,29 +68,14 @@ export const indicatorRegistry: Record<IndicatorType, IndicatorDefinition> = {
     label: (params) => `Histogram(${params.macdFast ?? 12},${params.macdSlow ?? 26},${params.macdSignal ?? 9})`,
     compute: calculateMACDHistogram
   },
-  bollingerUpper: {
-    type: 'bollingerUpper',
-    name: 'Bollinger Upper',
+  bollinger: {
+    type: 'bollinger',
+    name: 'Bollinger Bands',
     pane: 'overlay',
     defaultParams: { length: 20, source: 'close', stdDev: 2 },
-    label: (params) => `BB Upper(${params.length}, ${params.stdDev ?? 2})`,
-    compute: calculateBollingerUpper
-  },
-  bollingerMiddle: {
-    type: 'bollingerMiddle',
-    name: 'Bollinger Middle',
-    pane: 'overlay',
-    defaultParams: { length: 20, source: 'close', stdDev: 2 },
-    label: (params) => `BB Mid(${params.length})`,
-    compute: calculateBollingerMiddle
-  },
-  bollingerLower: {
-    type: 'bollingerLower',
-    name: 'Bollinger Lower',
-    pane: 'overlay',
-    defaultParams: { length: 20, source: 'close', stdDev: 2 },
-    label: (params) => `BB Lower(${params.length}, ${params.stdDev ?? 2})`,
-    compute: calculateBollingerLower
+    lines: ['upper', 'lower', 'value'],
+    label: (params) => `BB(${params.length}, ${params.stdDev ?? 2})`,
+    compute: calculateBollinger
   },
   volume: {
     type: 'volume',

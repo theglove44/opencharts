@@ -57,9 +57,7 @@ By default, the API runs in mock mode using bundled candle data.
 |-----------|-------------|------------|
 | **SMA** | Simple Moving Average | Length (default: 20), Source |
 | **EMA** | Exponential Moving Average | Length (default: 20), Source |
-| **Bollinger Upper** | Upper Bollinger Band | Length (default: 20), StdDev (default: 2) |
-| **Bollinger Middle** | Middle Bollinger Band (SMA) | Length (default: 20) |
-| **Bollinger Lower** | Lower Bollinger Band | Length (default: 20), StdDev (default: 2) |
+| **Bollinger Bands** | Bollinger Bands | Length (default: 20), StdDev (default: 2) |
 | **Anchored VWAP** | Volume-Weighted Average Price from anchor | Anchor datetime or click chart |
 
 ### Separate Pane Indicators
