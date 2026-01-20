@@ -1,0 +1,4 @@
+node_modules
+dist
+.svelte-kit
+apps/api/data/cache.sqlite
