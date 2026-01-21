@@ -9,6 +9,7 @@ A feature-rich, open-source, browser-based candlestick charting application with
 - **Multi-symbol support**: SPY, QQQ, IWM, DIA, AAPL, MSFT, GOOGL, AMZN, NVDA, TSLA
 - **Multiple timeframes**: 1m, 5m, 10m, 30m, 60m, 1D
 - **13 technical indicators** with customizable parameters
+- **Drawing tools**: Trendlines, Horizontal Lines, Fibonacci Retracements with persistence
 - **Real-time price updates** with automatic refresh
 - **Keyboard shortcuts** for power users
 - **Shareable URLs** with encoded chart state
@@ -133,6 +134,33 @@ Save your favorite indicator combinations:
 4. Load presets anytime by clicking on them
 
 Presets are stored in browser localStorage and persist across sessions.
+
+## Drawing Tools
+
+OpenCharts includes interactive drawing tools for technical analysis:
+
+### Available Tools
+
+| Tool | Description | Usage |
+|------|-------------|-------|
+| **Trendline** | Diagonal line between two price points | Click start point, click end point |
+| **Horizontal Line** | Infinite horizontal line at a price level | Single click at desired price |
+| **Fibonacci Retracement** | Fibonacci levels (0, 0.236, 0.382, 0.5, 0.618, 0.786, 1) | Click high, click low |
+
+### How to Use
+
+1. **Select a tool** from the drawing toolbar (top-right, after the Snap toggle)
+2. **Draw** by clicking on the chart:
+   - Trendline/Fibonacci: Click start point, then click end point
+   - Horizontal Line: Single click at the desired price level
+3. **Delete a drawing**: Right-click on any drawing and select "Remove"
+4. **Return to normal mode**: Click the cursor icon to deselect drawing tools
+
+### Persistence
+
+- Drawings are saved per-chart in browser localStorage
+- Each chart in a multi-chart layout maintains its own drawings
+- Drawings persist across browser sessions
 
 ## Environment Configuration
 

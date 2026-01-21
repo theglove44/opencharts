@@ -64,7 +64,7 @@ export function createCandleStore(): CandleStore {
   }
 
   function getCandles(symbol: string, fromMs: number, toMs: number): Candle[] {
-    return getCandlesStmt.all(symbol, fromMs, toMs).map((row) => ({
+    return getCandlesStmt.all(symbol, fromMs, toMs).map((row: any) => ({
       timestamp: row.timestamp as number,
       open: row.open as number,
       high: row.high as number,

@@ -43,10 +43,13 @@ function defaultLookbackMs(_: Timeframe) {
 
 server.get('/candles', async (request, reply) => {
   const { symbol = 'SPY', tf = '5m', from, to } = request.query as CandlesQuery;
-  if (!SUPPORTED_SYMBOLS.includes(symbol)) {
+
+  // Only enforce supported symbols strict check in mock mode
+  if (dataMode === 'mock' && !SUPPORTED_SYMBOLS.includes(symbol)) {
     reply.code(400);
-    return { error: `Unsupported symbol. Supported: ${SUPPORTED_SYMBOLS.join(', ')}` };
+    return { error: `Unsupported symbol in mock mode. Supported: ${SUPPORTED_SYMBOLS.join(', ')}` };
   }
+
   if (!TIMEFRAMES.includes(tf as Timeframe)) {
     reply.code(400);
     return { error: 'Unsupported timeframe' };
@@ -61,33 +64,44 @@ server.get('/candles', async (request, reply) => {
     return { error: 'Invalid time range' };
   }
 
-  const candles = await candleService.getCandles(symbol, timeframe, fromMs, toMs);
-
-  return {
-    symbol,
-    timeframe,
-    candles
-  };
+  try {
+    const candles = await candleService.getCandles(symbol, timeframe, fromMs, toMs);
+    return {
+      symbol,
+      timeframe,
+      candles
+    };
+  } catch (err) {
+    // If provider fails (e.g. invalid symbol for Alpaca), return error
+    reply.code(400);
+    return { error: 'Failed to fetch candles. Symbol might be invalid.' };
+  }
 });
 
 server.get('/latest', async (request, reply) => {
   const { symbol = 'SPY' } = request.query as CandlesQuery;
-  if (!SUPPORTED_SYMBOLS.includes(symbol)) {
+
+  if (dataMode === 'mock' && !SUPPORTED_SYMBOLS.includes(symbol)) {
     reply.code(400);
-    return { error: `Unsupported symbol. Supported: ${SUPPORTED_SYMBOLS.join(', ')}` };
+    return { error: `Unsupported symbol in mock mode. Supported: ${SUPPORTED_SYMBOLS.join(', ')}` };
   }
 
-  const latest = await candleService.getLatestTrade(symbol);
-  if (!latest) {
-    reply.code(404);
-    return { error: 'No data' };
-  }
+  try {
+    const latest = await candleService.getLatestTrade(symbol);
+    if (!latest) {
+      reply.code(404);
+      return { error: 'No data' };
+    }
 
-  return {
-    symbol,
-    price: latest.price,
-    timestamp: latest.timestamp
-  };
+    return {
+      symbol,
+      price: latest.price,
+      timestamp: latest.timestamp
+    };
+  } catch (err) {
+    reply.code(400);
+    return { error: 'Failed to fetch latest trade.' };
+  }
 });
 
 const port = Number(process.env.PORT || 3001);

@@ -12,5 +12,9 @@
   "scripts": {
     "test": "vitest run",
     "lint": "eslint src"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.1",
+    "@types/node": "^25.0.9"
   }
 }

@@ -107,7 +107,7 @@ export function createAlpacaTradeStream(symbols: string[]): AlpacaTradeStream {
       );
     });
 
-    socket.on('message', (data) => {
+    socket.on('message', (data: WebSocket.Data) => {
       const payload = typeof data === 'string' ? data : data.toString();
       handleMessages(payload);
     });
@@ -116,7 +116,7 @@ export function createAlpacaTradeStream(symbols: string[]): AlpacaTradeStream {
       scheduleReconnect();
     });
 
-    socket.on('error', (error) => {
+    socket.on('error', (error: Error) => {
       console.warn('Alpaca stream error', error);
       scheduleReconnect();
     });

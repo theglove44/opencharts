@@ -7,6 +7,7 @@
     type IndicatorInstance,
     type IndicatorType,
   } from '@oss-charts/indicators';
+  import type { Drawing, DrawingType } from '$lib/types/drawing';
   import { fetchSymbols } from '$lib/api';
   import ChartViewport from '$lib/components/ChartViewport.svelte';
   import { toLocalInputValue } from '$lib/chart-helpers';
@@ -19,6 +20,7 @@
     symbol: string;
     timeframe: Timeframe;
     indicators: IndicatorInstance[];
+    drawings: Drawing[];
   }
 
   type LayoutType = 'single' | '1-2' | '2-1' | '2-2' | '1-3' | '3-1';
@@ -40,6 +42,7 @@
   let savedPresets: { name: string; indicators: IndicatorInstance[] }[] = [];
   let isFullscreen = false;
   let crosshairSnap = true;
+  let activeTool: DrawingType | null = null;
 
   // Crosshair Mode Reference (loaded dynamically)
   let crosshairModeRef: typeof import('lightweight-charts').CrosshairMode | null = null;
@@ -69,7 +72,9 @@
       indicators: [
         { id: createId(), type: 'sma', params: { length: 20, source: 'close' } },
         { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } },
+        { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } },
       ],
+      drawings: [],
     };
   }
 
@@ -91,7 +96,10 @@
       const parsed = JSON.parse(raw);
       // Migration or Simple check
       if (parsed.charts && Array.isArray(parsed.charts)) {
-        charts = parsed.charts;
+        charts = parsed.charts.map((c: any) => ({
+          ...c,
+          drawings: c.drawings || [],
+        }));
         layout = parsed.layout || 'single';
         activeChartId = parsed.activeChartId || charts[0]?.id;
         syncSymbol = parsed.syncSymbol ?? false;
@@ -103,6 +111,7 @@
             symbol: parsed.symbol || 'SPY',
             timeframe: parsed.timeframe || '5m',
             indicators: parsed.indicators || [],
+            drawings: parsed.drawings || [],
           },
         ];
         activeChartId = charts[0].id;
@@ -120,15 +129,13 @@
   }
 
   function saveState() {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        layout,
-        charts,
-        activeChartId,
-        syncSymbol,
-      }),
-    );
+    const stateToSave = {
+      layout,
+      charts,
+      activeChartId,
+      syncSymbol,
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stateToSave));
   }
 
   function updateChartsForLayout(newLayout: LayoutType) {
@@ -380,6 +387,20 @@
     if (isFullscreen) document.documentElement.requestFullscreen?.();
     else document.exitFullscreen?.();
   }
+
+  function handleDrawingCreate(chartId: string, drawing: Drawing) {
+    charts = charts.map((c) =>
+      c.id === chartId ? { ...c, drawings: [...c.drawings, drawing] } : c,
+    );
+    saveState();
+  }
+
+  function handleDrawingDelete(chartId: string, drawingId: string) {
+    charts = charts.map((c) =>
+      c.id === chartId ? { ...c, drawings: c.drawings.filter((d) => d.id !== drawingId) } : c,
+    );
+    saveState();
+  }
 </script>
 
 <svelte:head>
@@ -392,15 +413,18 @@
     <div class="topbar-left">
       <div class="brand">
         <span class="logo">OpenCharts</span>
-        <select
-          class="symbol-select"
+        <input
+          class="symbol-input"
+          type="text"
           value={activeSymbol}
           on:change={(e) => setSymbol(e.currentTarget.value)}
-        >
+          list="symbol-suggestions"
+        />
+        <datalist id="symbol-suggestions">
           {#each availableSymbols as sym}
-            <option value={sym}>{sym}</option>
+            <option value={sym} />
           {/each}
-        </select>
+        </datalist>
 
         <label class="sync-toggle" title="Sync Symbol Across All Charts">
           <input type="checkbox" bind:checked={syncSymbol} on:change={saveState} />
@@ -600,6 +624,77 @@
       <button class="toolbar-btn" on:click={toggleFullscreen}>
         {isFullscreen ? 'Exit' : 'Full'}
       </button>
+
+      <!-- DRAWING TOOLS -->
+      <div class="drawing-tools">
+        <button class:active={!activeTool} on:click={() => (activeTool = null)} title="Cursor">
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <path
+              d="M14.0828 9.50279L21.3579 16.7779L16.7779 21.3579L9.50279 14.0828L3.25 20.3356V3.25L20.3356 9.50279L14.0828 9.50279Z"
+            />
+          </svg>
+        </button>
+        <button
+          class:active={activeTool === 'trendline'}
+          on:click={() => (activeTool = 'trendline')}
+          title="Trendline"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="4" y1="20" x2="20" y2="4" />
+            <circle cx="4" cy="20" r="2" fill="currentColor" />
+            <circle cx="20" cy="4" r="2" fill="currentColor" />
+          </svg>
+        </button>
+        <button
+          class:active={activeTool === 'horizontal_line'}
+          on:click={() => (activeTool = 'horizontal_line')}
+          title="Horizontal Line"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="3" y1="12" x2="21" y2="12" />
+          </svg>
+        </button>
+        <button
+          class:active={activeTool === 'fibonacci'}
+          on:click={() => (activeTool = 'fibonacci')}
+          title="Fibonacci"
+        >
+          <svg
+            width="20"
+            height="20"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <line x1="4" y1="20" x2="20" y2="4" stroke-dasharray="2 2" opacity="0.5" />
+            <line x1="4" y1="20" x2="10" y2="20" />
+            <line x1="14" y1="10" x2="20" y2="10" />
+            <line x1="14" y1="4" x2="20" y2="4" />
+          </svg>
+        </button>
+      </div>
     </div>
   </header>
 
@@ -614,8 +709,12 @@
         indicators={chart.indicators}
         isActive={activeChartId === chart.id}
         {crosshairSnap}
+        activeTool={activeChartId === chart.id ? activeTool : null}
+        drawings={chart.drawings}
         on:activate={() => setActiveChart(chart.id)}
         on:pickAnchor={handleAnchorPick}
+        on:create={(e) => handleDrawingCreate(chart.id, e.detail)}
+        on:delete={(e) => handleDrawingDelete(chart.id, e.detail)}
       />
     {/each}
   </main>
@@ -680,14 +779,20 @@
     font-size: 16px;
   }
 
-  .symbol-select {
+  .symbol-input {
     padding: 6px 12px;
     border-radius: 8px;
     background: rgba(56, 189, 248, 0.15);
     border: 1px solid rgba(56, 189, 248, 0.35);
     color: #e2e8f0;
     font-weight: 600;
-    cursor: pointer;
+    width: 80px;
+    text-transform: uppercase;
+  }
+  .symbol-input:focus {
+    outline: none;
+    border-color: rgba(56, 189, 248, 0.8);
+    background: rgba(56, 189, 248, 0.25);
   }
 
   .sync-toggle {
@@ -940,5 +1045,38 @@
       grid-template-columns: 1fr !important;
       grid-template-rows: auto !important;
     }
+  }
+
+  .drawing-tools {
+    display: flex;
+    gap: 4px;
+    margin-left: 16px;
+    padding-left: 16px;
+    border-left: 1px solid rgba(148, 163, 184, 0.2);
+  }
+
+  .drawing-tools button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    background: transparent;
+    border: 1px solid transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .drawing-tools button:hover {
+    background: rgba(148, 163, 184, 0.1);
+    color: #e2e8f0;
+  }
+
+  .drawing-tools button.active {
+    background: rgba(56, 189, 248, 0.15);
+    color: #38bdf8;
+    border-color: rgba(56, 189, 248, 0.3);
   }
 </style>

@@ -18,6 +18,8 @@
     type IndicatorInstance,
   } from '@oss-charts/indicators';
   import { fetchCandles, fetchLatestPrice } from '$lib/api';
+  import ChartDrawings from './ChartDrawings.svelte';
+  import type { Drawing, DrawingType } from '$lib/types/drawing';
 
   const dispatch = createEventDispatcher();
   const palette = ['#f97316', '#22c55e', '#0ea5e9', '#eab308', '#ef4444', '#8b5cf6'];
@@ -28,9 +30,14 @@
   export let indicators: IndicatorInstance[] = [];
   export let isActive = false;
   export let crosshairSnap = true;
+  export let activeTool: DrawingType | null = null;
+  export let drawings: Drawing[] = [];
 
   let chartContainer: HTMLDivElement | null = null;
   let rsiContainer: HTMLDivElement | null = null;
+
+  let width = 0;
+  let height = 0;
 
   let chart: IChartApi | null = null;
   let candleSeries: ISeriesApi<'Candlestick'> | null = null;
@@ -54,6 +61,7 @@
   let latestInFlight = false;
   let lastBarUpdatedAt = '';
   let anchorPickId: string | null = null;
+  let noData = false;
 
   const TICK_REFRESH_MS = 1_000;
   const BAR_REFRESH_MS = 60_000;
@@ -77,7 +85,9 @@
     }
   }
 
-  $: if (crosshairSnap && chart && crosshairModeRef) {
+  $: if (chart && crosshairModeRef) {
+    // Reference crosshairSnap to make this reactive to its changes
+    crosshairSnap;
     applyCrosshairMode();
   }
 
@@ -115,9 +125,11 @@
 
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
+        width = entry.contentRect.width;
+        height = entry.contentRect.height;
         chartApi.applyOptions({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
+          width: width,
+          height: height,
         });
       }
     });
@@ -275,6 +287,7 @@
       const to = new Date();
       const from = new Date(to.getTime() - getLookbackMs(timeframe));
       candles = await fetchCandles(symbol, timeframe, from, to);
+      noData = candles.length === 0;
       candleSeries?.setData(toCandlestickData(candles));
       updateIndicatorData();
       allowRangeSync = candles.length > 0;
@@ -504,6 +517,19 @@
 
   <div class="chart" bind:this={chartContainer}></div>
 
+  {#if chart && candleSeries}
+    <ChartDrawings
+      {chart}
+      series={candleSeries}
+      {drawings}
+      {activeTool}
+      {width}
+      {height}
+      on:create
+      on:delete
+    />
+  {/if}
+
   {#if loading}
     <div class="overlay loading-overlay">
       <div class="loading-spinner"></div>
@@ -512,6 +538,13 @@
   {/if}
   {#if error}
     <div class="overlay error">{error}</div>
+  {/if}
+  {#if !loading && !error && noData}
+    <div class="overlay no-data">
+      <div class="no-data-icon">∅</div>
+      <span>No data available for <span class="highlight">{symbol}</span></span>
+      <span class="sub-text">Symbol might be invalid or not supported by data provider.</span>
+    </div>
   {/if}
 
   {#if indicators.some((indicator) => indicatorRegistry[indicator.type].pane === 'separate')}
@@ -725,6 +758,23 @@
 
   .overlay.error {
     color: #fca5a5;
+  }
+
+  .overlay.no-data {
+    color: #94a3b8;
+    background: rgba(15, 23, 42, 0.9);
+  }
+  .no-data-icon {
+    font-size: 48px;
+    opacity: 0.2;
+  }
+  .highlight {
+    color: #38bdf8;
+    font-weight: 700;
+  }
+  .sub-text {
+    font-size: 12px;
+    opacity: 0.6;
   }
 
   @media (max-width: 640px) {

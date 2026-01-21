@@ -3,7 +3,7 @@ import { DateTime } from 'luxon';
 export const NY_TZ = 'America/New_York';
 
 export function getNyDate(timestampMs: number): string {
-  return DateTime.fromMillis(timestampMs, { zone: NY_TZ }).toISODate();
+  return DateTime.fromMillis(timestampMs, { zone: NY_TZ }).toISODate() ?? '';
 }
 
 export function isRegularSessionMinute(timestampMs: number): boolean {
@@ -16,7 +16,7 @@ export function isRegularSessionMinute(timestampMs: number): boolean {
 }
 
 export function getSessionStartMs(timestampMs: number): number {
-  const date = DateTime.fromMillis(timestampMs, { zone: NY_TZ }).toISODate();
+  const date = DateTime.fromMillis(timestampMs, { zone: NY_TZ }).toISODate() ?? '';
   return DateTime.fromISO(date, { zone: NY_TZ })
     .set({ hour: 9, minute: 30, second: 0, millisecond: 0 })
     .toMillis();
