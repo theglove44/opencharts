@@ -16,10 +16,15 @@ A feature-rich, open-source, browser-based candlestick charting application with
 - **Chart export** to PNG
 - **Fullscreen mode** for focused analysis
 - **Dark theme** optimized for trading
+- **Multi-Chart Layouts** for simultaneous monitoring of multiple assets
+
+![Multi-Chart Layout](docs/multi-chart-layout.png)
 
 ## Use Cases
 
 ### For Traders
+- **Multi-Chart Analysis**: Use the 2x2 or split-screen layouts to monitor correlated assets (e.g., SPY and VIX) or different timeframes (e.g., 5m and 1D) simultaneously.
+- **Symbol Synchronization**: Toggle "Sync Symbol" to instantly switch all charts to a new ticker while maintaining their individual timeframe and indicator settings.
 - **Technical Analysis**: Use professional-grade tools like Anchored VWAP, Bollinger Bands, and MACD to analyze price action.
 - **Market Monitoring**: Keep track of multiple tickers (SPY, QQQ, NVDA, etc.) with real-time price updates.
 - **Custom Setups**: Save your specific indicator configurations as presets for quick access.
