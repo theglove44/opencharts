@@ -10,13 +10,13 @@
     "lint": "eslint src"
   },
   "dependencies": {
-    "@fastify/cors": "^8.4.2",
+    "@fastify/cors": "^11.2.0",
     "@oss-charts/core": "workspace:*",
     "better-sqlite3": "^9.4.0",
     "dotenv": "^16.4.5",
-    "fastify": "^4.28.1",
+    "fastify": "^5.8.5",
     "luxon": "^3.5.0",
-    "ws": "^8.18.0"
+    "ws": "^8.21.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
