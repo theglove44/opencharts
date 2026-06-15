@@ -10,7 +10,8 @@ import { SUPPORTED_SYMBOLS } from './providers/mock';
 const server = Fastify({ logger: true });
 
 await server.register(cors, {
-  origin: true
+  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  credentials: true,
 });
 
 const candleStore = createCandleStore();
@@ -105,6 +106,6 @@ server.get('/latest', async (request, reply) => {
 });
 
 const port = Number(process.env.PORT || 3001);
-const host = process.env.HOST || '0.0.0.0';
+const host = process.env.HOST || '127.0.0.1';
 
 server.listen({ port, host });
