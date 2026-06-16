@@ -19,7 +19,8 @@ type TradeMessage = {
 };
 
 const DEFAULT_STREAM_URL = 'wss://stream.data.alpaca.markets/v2';
-const RECONNECT_DELAYS_MS = [1000, 2000, 5000, 10000];
+const MAX_RECONNECT_ATTEMPTS = 10;
+const MAX_BACKOFF_DELAY = 30000;
 
 export function createAlpacaTradeStream(symbols: string[]): AlpacaTradeStream {
   const apiKey = process.env.ALPACA_API_KEY;
@@ -50,9 +51,17 @@ export function createAlpacaTradeStream(symbols: string[]): AlpacaTradeStream {
       return;
     }
     clearReconnect();
-    const delay =
-      RECONNECT_DELAYS_MS[Math.min(reconnectAttempts, RECONNECT_DELAYS_MS.length - 1)];
     reconnectAttempts += 1;
+    if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+      console.error(
+        `Alpaca stream: max reconnect attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Giving up.`
+      );
+      fatalError('Max reconnect attempts exceeded');
+      return;
+    }
+    const baseDelay = Math.min(1000 * 2 ** reconnectAttempts, MAX_BACKOFF_DELAY);
+    const jitter = Math.random() * 1000;
+    const delay = baseDelay + jitter;
     reconnectTimer = setTimeout(() => {
       connect();
     }, delay);
@@ -76,9 +85,24 @@ export function createAlpacaTradeStream(symbols: string[]): AlpacaTradeStream {
         }
       }
       if (message.T === 'error') {
-        console.warn('Alpaca stream error', message.msg ?? 'unknown error');
+        const errMsg = message.msg ?? 'unknown error';
+        console.warn('Alpaca stream error', errMsg);
+        if (/auth/i.test(errMsg) || /invalid.*key/i.test(errMsg) || /not.*authenticated/i.test(errMsg)) {
+          fatalError(`Alpaca auth error: ${errMsg}`);
+        }
       }
     }
+  }
+
+  function fatalError(reason: string) {
+    closing = true;
+    clearReconnect();
+    if (socket) {
+      socket.removeAllListeners();
+      socket.close();
+    }
+    socket = null;
+    console.error(`Alpaca stream fatal: ${reason}`);
   }
 
   function connect() {
