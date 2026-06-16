@@ -20,8 +20,8 @@ async function fetchWithRetry(url: string, options: RequestInit): Promise<Respon
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS[i]));
         continue;
       }
-      const body = await response.text();
-      throw new Error(`Alpaca error ${response.status}: ${body}`);
+      await response.text();
+      throw new Error(`Alpaca request failed (${response.status})`);
     } catch (error) {
       lastError = error as Error;
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS[i]));

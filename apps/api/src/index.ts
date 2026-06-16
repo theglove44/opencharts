@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
 import { TIMEFRAMES, Timeframe } from '@oss-charts/core';
 import { createCandleStore } from './db';
 import { createAlpacaTradeStream } from './providers/alpaca-stream';
@@ -12,6 +13,11 @@ const server = Fastify({ logger: true });
 await server.register(cors, {
   origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   credentials: true,
+});
+
+await server.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute',
 });
 
 const candleStore = createCandleStore();
@@ -38,12 +44,33 @@ type CandlesQuery = {
   to?: string;
 };
 
+const MAX_LOOKBACK_MS: Record<Timeframe, number> = {
+  '1m': 7 * 24 * 60 * 60_000,
+  '5m': 30 * 24 * 60 * 60_000,
+  '10m': 60 * 24 * 60 * 60_000,
+  '30m': 90 * 24 * 60 * 60_000,
+  '60m': 180 * 24 * 60 * 60_000,
+  '1d': 5 * 365 * 24 * 60 * 60_000,
+};
+
 function defaultLookbackMs(_timeframe: Timeframe) {
   void _timeframe;
   return 90 * 24 * 60 * 60_000;
 }
 
-server.get('/candles', async (request, reply) => {
+server.get('/candles', {
+  schema: {
+    querystring: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', minLength: 1, maxLength: 16 },
+        tf: { type: 'string', enum: TIMEFRAMES },
+        from: { type: 'string', format: 'date-time' },
+        to: { type: 'string', format: 'date-time' },
+      },
+    },
+  },
+}, async (request, reply) => {
   const { symbol = 'SPY', tf = '5m', from, to } = request.query as CandlesQuery;
 
   // Only enforce supported symbols strict check in mock mode
@@ -66,6 +93,17 @@ server.get('/candles', async (request, reply) => {
     return { error: 'Invalid time range' };
   }
 
+  // Only cap date range when user explicitly provides both bounds
+  if (from && to) {
+    const rangeMs = toMs - fromMs;
+    const maxLookback = MAX_LOOKBACK_MS[timeframe];
+    if (rangeMs > maxLookback) {
+      const maxLookbackDays = Math.round(maxLookback / (24 * 60 * 60_000));
+      reply.code(400);
+      return { error: `Date range too large for ${timeframe} timeframe. Maximum: ${maxLookbackDays} days` };
+    }
+  }
+
   try {
     const candles = await candleService.getCandles(symbol, timeframe, fromMs, toMs);
     return {
@@ -81,7 +119,16 @@ server.get('/candles', async (request, reply) => {
   }
 });
 
-server.get('/latest', async (request, reply) => {
+server.get('/latest', {
+  schema: {
+    querystring: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', minLength: 1, maxLength: 16 },
+      },
+    },
+  },
+}, async (request, reply) => {
   const { symbol = 'SPY' } = request.query as CandlesQuery;
 
   if (dataMode === 'mock' && !SUPPORTED_SYMBOLS.includes(symbol)) {
