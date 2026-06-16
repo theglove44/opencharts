@@ -15,8 +15,13 @@ describe('chart helpers', () => {
     expect(getTimeframeMs('1d')).toBe(390 * 60_000);
   });
 
-  it('returns a fixed lookback window', () => {
-    expect(getLookbackMs('5m')).toBe(90 * 24 * 60 * 60_000);
+  it('returns a lookback window within API caps', () => {
+    expect(getLookbackMs('1m')).toBe(7 * 24 * 60 * 60_000);
+    expect(getLookbackMs('5m')).toBe(30 * 24 * 60 * 60_000);
+    expect(getLookbackMs('10m')).toBe(60 * 24 * 60 * 60_000);
+    expect(getLookbackMs('30m')).toBe(90 * 24 * 60 * 60_000);
+    expect(getLookbackMs('60m')).toBe(180 * 24 * 60 * 60_000);
+    expect(getLookbackMs('1d')).toBe(1825 * 24 * 60 * 60_000);
   });
 
   it('maps candlestick data to chart points', () => {
