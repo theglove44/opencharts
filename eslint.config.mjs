@@ -51,20 +51,6 @@ export default tseslint.config(
     }
   },
 
-  // Rule overrides for noisy/pedantic defaults from the ESLint 9 migration
-  {
-    rules: {
-      // SvelteKit's app.d.ts uses empty interfaces for namespace augmentation
-      '@typescript-eslint/no-empty-object-type': 'off',
-      // Svelte reactivity uses bare expressions (e.g. `crosshairSnap;` in reactive blocks)
-      '@typescript-eslint/no-unused-expressions': 'off',
-      // Svelte 4 compat: new Map() patterns are fine
-      'svelte/prefer-svelte-reactivity': 'off',
-      // Legacy {#each} blocks without stable keys — adding keys is riskier than disabling
-      'svelte/require-each-key': 'off'
-    }
-  },
-
   // Prettier integration — must be last to override formatting rules
   prettierConfig
 );

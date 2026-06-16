@@ -411,7 +411,7 @@
           return;
         }
         const data = param.seriesData.get(candleSeries);
-        // @ts-expect-error - lightweight-charts types don't expose the raw candle shape
+        // @ts-ignore
         const candle = data as Candle | undefined;
 
         if (candle && typeof candle.open === 'number') {
@@ -433,9 +433,12 @@
           return;
         }
         let timestampMs: number | null = null;
+        // @ts-ignore
         if (typeof param.time === 'number') {
           timestampMs = param.time * 1000;
+          // @ts-ignore
         } else if (param.time && typeof param.time === 'object' && 'year' in param.time) {
+          // @ts-ignore
           const t = param.time;
           timestampMs = Date.UTC(t.year, t.month - 1, t.day);
         }
