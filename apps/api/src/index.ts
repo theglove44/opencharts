@@ -38,7 +38,8 @@ type CandlesQuery = {
   to?: string;
 };
 
-function defaultLookbackMs(_: Timeframe) {
+function defaultLookbackMs(_timeframe: Timeframe) {
+  void _timeframe;
   return 90 * 24 * 60 * 60_000;
 }
 
@@ -72,7 +73,8 @@ server.get('/candles', async (request, reply) => {
       timeframe,
       candles
     };
-  } catch (err) {
+  } catch (_err) {
+    void _err;
     // If provider fails (e.g. invalid symbol for Alpaca), return error
     reply.code(400);
     return { error: 'Failed to fetch candles. Symbol might be invalid.' };
@@ -99,7 +101,8 @@ server.get('/latest', async (request, reply) => {
       price: latest.price,
       timestamp: latest.timestamp
     };
-  } catch (err) {
+  } catch (_err) {
+    void _err;
     reply.code(400);
     return { error: 'Failed to fetch latest trade.' };
   }

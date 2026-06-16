@@ -64,13 +64,13 @@ export function createCandleStore(): CandleStore {
   }
 
   function getCandles(symbol: string, fromMs: number, toMs: number): Candle[] {
-    return getCandlesStmt.all(symbol, fromMs, toMs).map((row: any) => ({
-      timestamp: row.timestamp as number,
-      open: row.open as number,
-      high: row.high as number,
-      low: row.low as number,
-      close: row.close as number,
-      volume: row.volume as number
+    return (getCandlesStmt.all(symbol, fromMs, toMs) as Record<string, number>[]).map((row) => ({
+      timestamp: row.timestamp,
+      open: row.open,
+      high: row.high,
+      low: row.low,
+      close: row.close,
+      volume: row.volume
     }));
   }
 

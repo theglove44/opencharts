@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createEventDispatcher } from 'svelte';
-  import type { IChartApi, ISeriesApi, MouseEventParams } from 'lightweight-charts';
+  import type { IChartApi, ISeriesApi } from 'lightweight-charts';
   import type { Drawing, DrawingType, Point } from '$lib/types/drawing';
   import { DEFAULT_FIB_LEVELS } from '$lib/types/drawing';
 
@@ -15,7 +15,6 @@
 
   let previewPoints: Point[] = [];
   let isDrawing = false;
-  let hoveredDrawingId: string | null = null;
 
   let contextMenu: { x: number; y: number; drawingId: string } | null = null;
 
@@ -24,7 +23,7 @@
 
   function toCoords(point: Point) {
     if (!point) return null;
-    const x = timeScale.timeToCoordinate((point.timestamp / 1000) as any);
+    const x = timeScale.timeToCoordinate((point.timestamp / 1000) as unknown as import('lightweight-charts').Time);
     const y = series.priceToCoordinate(point.price);
     if (x === null || y === null) return null;
     return { x, y };
@@ -208,7 +207,7 @@
         style="pointer-events: none;"
       />
       <!-- Endpoints (optional, for selection) -->
-      {#each drawing.points as p}
+      {#each drawing.points as p (p.timestamp)}
         {#if toCoords(p)}
           <circle
             cx={toCoords(p)?.x}
@@ -249,7 +248,7 @@
 
     <!-- Fibonacci -->
     {#if drawing.type === 'fibonacci' && drawing.points.length === 2}
-      {#each getFibLines(drawing.points[0], drawing.points[1], drawing.properties.fibLevels || []) as fib}
+      {#each getFibLines(drawing.points[0], drawing.points[1], drawing.properties.fibLevels || []) as fib (fib.level)}
         <!-- Hit area -->
         <line
           x1="0"
@@ -302,7 +301,7 @@
 
     <!-- Fibonacci Preview -->
     {#if activeTool === 'fibonacci' && previewPoints.length === 2}
-      {#each getFibLines(previewPoints[0], previewPoints[1], DEFAULT_FIB_LEVELS) as fib}
+      {#each getFibLines(previewPoints[0], previewPoints[1], DEFAULT_FIB_LEVELS) as fib (fib.level)}
         <line
           x1="0"
           y1={fib.y}

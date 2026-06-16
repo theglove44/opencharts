@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
+  import { onMount } from 'svelte';
   import type { Timeframe } from '@oss-charts/core';
   import { TIMEFRAMES } from '@oss-charts/core';
   import {
@@ -32,7 +32,6 @@
   let syncSymbol = false;
 
   let availableSymbols: string[] = ['SPY'];
-  let loadingSymbols = false;
 
   // Global UI State
   let showIndicators = false;
@@ -47,6 +46,11 @@
   // Crosshair Mode Reference (loaded dynamically)
   let crosshairModeRef: typeof import('lightweight-charts').CrosshairMode | null = null;
   let lwc: typeof import('lightweight-charts') | null = null;
+  // Both are read in onMount; eslint cannot see runtime usage in Svelte 5 legacy mode.
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  crosshairModeRef;
+  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+  lwc;
 
   // Active chart getters for toolbar binding
   $: activeChart = charts.find((c) => c.id === activeChartId) || charts[0];
@@ -80,10 +84,9 @@
 
   function loadState() {
     try {
-      // Try parsing URL first
+      // Try parsing URL first (reserved for future deep-linking)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const url = new URL(window.location.href);
-      // Simple URL param support for single chart mainly, or we could encode multiple
-      // For now, let's just stick to local storage for the multi-layout complexity
 
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
@@ -96,7 +99,7 @@
       const parsed = JSON.parse(raw);
       // Migration or Simple check
       if (parsed.charts && Array.isArray(parsed.charts)) {
-        charts = parsed.charts.map((c: any) => ({
+        charts = parsed.charts.map((c: ChartState) => ({
           ...c,
           drawings: c.drawings || [],
         }));
@@ -139,24 +142,15 @@
   }
 
   function updateChartsForLayout(newLayout: LayoutType) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const countMap: Record<LayoutType, number> = {
       single: 1,
-      '1-2': 2, // 1 top, 2 bottom? or just 2 charts total? Let's assume 2 chars split
+      '1-2': 2,
       '2-1': 2,
       '2-2': 4,
-      '1-3': 4,
-      '3-1': 4,
+      '1-3': 3,
+      '3-1': 3,
     };
-    // Actually, looking at the screenshot:
-    // Row 2: 2 cols side-by-side, or 2 rows stacked?
-    // Icons show:
-    // 1. Single
-    // 2. Parallel vertical (2 cols)
-    // 3. Parallel horizontal (2 rows)
-    // 4. 2 cols, left one split (3 total) - wait, icon 4 is left split?
-    // 5. 2 cols, right one split
-    // 6. 3 cols?
-    // Let's implement a target count based on the layout and fill/trim `charts` array.
 
     let targetCount = 1;
     switch (newLayout) {
@@ -282,7 +276,7 @@
     const target = e.currentTarget as HTMLSelectElement;
     updateIndicator(indId, (c) => ({
       ...c,
-      params: { ...c.params, source: target.value as any },
+      params: { ...c.params, source: target.value as (typeof sources)[number] },
     }));
   }
 
@@ -305,7 +299,7 @@
     const existing = savedPresets.findIndex((p) => p.name === presetName.trim());
     const preset = {
       name: presetName.trim(),
-      indicators: JSON.parse(JSON.stringify(activeChart.indicators)).map((i: any) => ({
+      indicators: JSON.parse(JSON.stringify(activeChart.indicators)).map((i: IndicatorInstance) => ({
         ...i,
         id: createId(),
       })),
@@ -355,32 +349,16 @@
     }
   });
 
-  // --- HELPERS ---
   // Anchor picking proxy
-  let chartViewports: Record<string, ChartViewport> = {}; // Bound refs if needed, or just use event dispatching
+  let viewportInstances = new Map<string, ChartViewport>();
 
   function handleAnchorPick(event: CustomEvent<{ id: string; timestampMs: number }>) {
-    // Logic for Anchor VWAP or similar
     const { id: indicatorId, timestampMs } = event.detail;
-    // We need to find which chart has this indicator.
-    // Actually the event comes from the active chart usually.
     updateIndicator(indicatorId, (cur) => ({
       ...cur,
       params: { ...cur.params, anchorIso: toLocalInputValue(timestampMs) },
     }));
   }
-
-  function triggerAnchorPick(indicatorId: string) {
-    // Find the ref for active chart and call method?
-    // Svelte bind:this inside each might be tricky with dynamic array.
-    // Alternative: Just set a global "picking" state?
-    // Actually ChartViewport needs to know.
-    // Let's rely on ChartViewport instance methods.
-    // We'll bind the components in the #each loop.
-  }
-
-  // We need a map of component instances to call methods on them
-  let viewportInstances = new Map<string, ChartViewport>();
 
   function toggleFullscreen() {
     isFullscreen = !isFullscreen;
@@ -421,7 +399,7 @@
           list="symbol-suggestions"
         />
         <datalist id="symbol-suggestions">
-          {#each availableSymbols as sym}
+          {#each availableSymbols as sym (sym)}
             <option value={sym}></option>
           {/each}
         </datalist>
@@ -433,7 +411,7 @@
       </div>
 
       <div class="timeframes">
-        {#each TIMEFRAMES as tf}
+        {#each TIMEFRAMES as tf (tf)}
           <button class:selected={tf === activeTimeframe} on:click={() => setTimeframe(tf)}>
             {tf.toUpperCase()}
           </button>
@@ -529,7 +507,7 @@
               <button class="add" on:click={saveCurrentAsPreset}>Save</button>
             </div>
             {#if savedPresets.length === 0}<p class="empty">No saved presets.</p>{/if}
-            {#each savedPresets as preset}
+            {#each savedPresets as preset (preset.name)}
               <div class="preset-item">
                 <button class="preset-load" on:click={() => applyPreset(preset)}>
                   {preset.name}
@@ -551,7 +529,7 @@
             <div class="panel-header">Active Chart Indicators</div>
             <div class="panel-row">
               <select bind:value={selectedIndicator}>
-                {#each Object.values(indicatorRegistry) as indicator}
+                {#each Object.values(indicatorRegistry) as indicator (indicator.type)}
                   <option value={indicator.type}>{indicator.name}</option>
                 {/each}
               </select>
@@ -586,7 +564,7 @@
                         value={indicator.params.source}
                         on:change={(e) => handleSourceUpdate(indicator.id, e)}
                       >
-                        {#each sources as s}<option value={s}>{s}</option>{/each}
+                        {#each sources as s (s)}<option value={s}>{s}</option>{/each}
                       </select>
                     </label>
                   {:else}

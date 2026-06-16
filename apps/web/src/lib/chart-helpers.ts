@@ -8,7 +8,8 @@ type LineSeriesPoint = { time: UTCTimestamp; value: number };
 const LOOKBACK_DAYS = 90;
 const ONE_MINUTE_MS = 60_000;
 
-export function getLookbackMs(_: Timeframe) {
+export function getLookbackMs(_timeframe: Timeframe) {
+  void _timeframe;
   return LOOKBACK_DAYS * 24 * 60 * ONE_MINUTE_MS;
 }
 

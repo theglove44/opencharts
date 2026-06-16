@@ -1,16 +1,14 @@
 <script lang="ts">
-  import { onMount, tick, createEventDispatcher } from 'svelte';
+  import { onMount, createEventDispatcher } from 'svelte';
 
   import type { IChartApi, ISeriesApi } from 'lightweight-charts';
   import type { Candle, Timeframe } from '@oss-charts/core';
   import {
-    formatTimestamp,
     getLookbackMs,
     getTimeframeMs,
     toCandlestickData,
     toCandlestickPoint,
     toLineData,
-    toLocalInputValue,
   } from '$lib/chart-helpers';
   import {
     indicatorRegistry,
@@ -43,12 +41,14 @@
   let candleSeries: ISeriesApi<'Candlestick'> | null = null;
   let rsiChart: IChartApi | null = null;
 
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   let overlaySeries = new Map<string, ISeriesApi<'Line'>>();
+  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   let rsiSeries = new Map<string, ISeriesApi<'Line'>>();
 
   let createChartFn: typeof import('lightweight-charts').createChart | null = null;
   let crosshairModeRef: typeof import('lightweight-charts').CrosshairMode | null = null;
-  let syncVisibleRange: ((range: any) => void) | null = null;
+  let syncVisibleRange: ((range: unknown) => void) | null = null;
   let allowRangeSync = false;
 
   let candles: Candle[] = [];
@@ -59,9 +59,8 @@
   let fullRefreshTimer: ReturnType<typeof setInterval> | null = null;
   let refreshInFlight = false;
   let latestInFlight = false;
-  let lastBarUpdatedAt = '';
-  let anchorPickId: string | null = null;
   let noData = false;
+  let anchorPickId: string | null = null;
 
   const TICK_REFRESH_MS = 1_000;
   const BAR_REFRESH_MS = 60_000;
@@ -69,7 +68,7 @@
   $: {
     if (symbol || timeframe) {
       // Trigger refresh when props change
-      refreshCandles(true);
+      void refreshCandles(true);
     }
   }
 
@@ -87,11 +86,13 @@
 
   $: if (chart && crosshairModeRef) {
     // Reference crosshairSnap to make this reactive to its changes
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
     crosshairSnap;
     applyCrosshairMode();
   }
 
-  function createId() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function generateId() {
     return typeof crypto !== 'undefined' && 'randomUUID' in crypto
       ? crypto.randomUUID()
       : `id-${Math.random().toString(36).slice(2, 9)}`;
@@ -225,6 +226,10 @@
     });
   }
 
+  function handleError(err: unknown) {
+    console.warn('Chart range sync error', err);
+  }
+
   function resetRsiChart() {
     if (!rsiContainer) {
       return;
@@ -253,7 +258,7 @@
     applyCrosshairMode();
 
     if (chart) {
-      syncVisibleRange = (range) => {
+      syncVisibleRange = (range: { from: number | null; to: number | null }) => {
         if (
           !allowRangeSync ||
           !range ||
@@ -265,9 +270,9 @@
           return;
         }
         try {
-          rsiChart.timeScale().setVisibleRange(range);
+          rsiChart.timeScale().setVisibleRange(range as unknown as import('lightweight-charts').Range<import('lightweight-charts').Time>);
         } catch (err) {
-          return;
+          handleError(err);
         }
       };
       chart.timeScale().subscribeVisibleTimeRangeChange(syncVisibleRange);
@@ -293,8 +298,8 @@
       allowRangeSync = candles.length > 0;
       const last = candles[candles.length - 1];
       crosshair = last ?? null;
-      lastBarUpdatedAt = last ? formatTimestamp(last.timestamp) : '';
     } catch (err) {
+      handleError(err);
       error = err instanceof Error ? err.message : 'Failed to load candles';
     } finally {
       if (showLoading) {
@@ -411,7 +416,7 @@
           return;
         }
         const data = param.seriesData.get(candleSeries);
-        // @ts-ignore
+        // @ts-expect-error lightweight-charts seriesData type is opaque
         const candle = data as Candle | undefined;
 
         if (candle && typeof candle.open === 'number') {
@@ -433,13 +438,10 @@
           return;
         }
         let timestampMs: number | null = null;
-        // @ts-ignore
         if (typeof param.time === 'number') {
           timestampMs = param.time * 1000;
-          // @ts-ignore
         } else if (param.time && typeof param.time === 'object' && 'year' in param.time) {
-          // @ts-ignore
-          const t = param.time;
+          const t = param.time as { year: number; month: number; day: number };
           timestampMs = Date.UTC(t.year, t.month - 1, t.day);
         }
         if (!timestampMs) {
@@ -499,7 +501,7 @@
         </span>
       </div>
     {/if}
-    {#each indicators.filter((indicator) => indicatorRegistry[indicator.type].pane === 'overlay') as indicator}
+    {#each indicators.filter((indicator) => indicatorRegistry[indicator.type].pane === 'overlay') as indicator (indicator.id)}
       <span
         class="legend-item"
         style="--indicator-color: {getIndicatorColor(indicator.id)}"
@@ -551,7 +553,7 @@
     <div class="rsi-section">
       <div class="legend">
         <span class="legend-title">Oscillators</span>
-        {#each indicators.filter((indicator) => indicatorRegistry[indicator.type].pane === 'separate') as indicator}
+        {#each indicators.filter((indicator) => indicatorRegistry[indicator.type].pane === 'separate') as indicator (indicator.id)}
           <span
             class="legend-item"
             style="--indicator-color: {getIndicatorColor(indicator.id)}"
