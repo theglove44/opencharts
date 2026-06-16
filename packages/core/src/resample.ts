@@ -1,4 +1,4 @@
-import { Candle, Timeframe, timeframeToMinutes } from './types';
+import { type Candle, type Timeframe, timeframeToMinutes } from './types';
 import { getSessionStartMs, isRegularSessionMinute } from './session';
 
 const MINUTE_MS = 60_000;
