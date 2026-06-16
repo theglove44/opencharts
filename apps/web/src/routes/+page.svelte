@@ -422,7 +422,7 @@
         />
         <datalist id="symbol-suggestions">
           {#each availableSymbols as sym}
-            <option value={sym} />
+            <option value={sym}></option>
           {/each}
         </datalist>
 
