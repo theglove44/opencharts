@@ -15,6 +15,7 @@
     "@types/node": "^25.9.1",
     "@typescript-eslint/eslint-plugin": "^8.60.1",
     "@typescript-eslint/parser": "^8.60.1",
+    "typescript-eslint": "^8.60.1",
     "concurrently": "^10.0.3",
     "eslint": "^9.39.1",
     "eslint-config-prettier": "^10.1.8",
@@ -29,11 +30,17 @@
     "overrides": {
       "ajv@>=7.0.0-alpha.0 <8.18.0": "8.20.0",
       "brace-expansion@<1.1.13": "1.1.13",
-      "cookie": "^0.7.0",
+      "cookie": "^0.7.2",
+      "devalue": "^5.8.1",
       "fast-uri": "^3.1.2",
       "flatted": "^3.4.2",
+      "js-yaml": "^4.2.0",
+      "lodash": "^4.17.21",
+      "minimatch": "^9.0.7",
+      "picomatch": "^4.0.2",
       "postcss": "^8.5.15",
-      "rollup": "^4.61.1",
+      "rollup": "^4.62.0",
+      "shell-quote": "^1.8.4",
       "yaml@>=1.0.0 <1.10.3": "1.10.3"
     }
   }

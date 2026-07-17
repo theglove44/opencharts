@@ -87,9 +87,7 @@
   }
 
   $: if (chart && crosshairModeRef) {
-    // Reference crosshairSnap to make this reactive to its changes
-    crosshairSnap;
-    applyCrosshairMode();
+    applyCrosshairMode(crosshairSnap);
   }
 
   function buildChart(container: HTMLDivElement) {
@@ -134,11 +132,11 @@
     return { chartApi, resizeObserver };
   }
 
-  function applyCrosshairMode() {
+  function applyCrosshairMode(snap = crosshairSnap) {
     if (!crosshairModeRef) {
       return;
     }
-    const mode = crosshairSnap ? crosshairModeRef.Magnet : crosshairModeRef.Normal;
+    const mode = snap ? crosshairModeRef.Magnet : crosshairModeRef.Normal;
     chart?.applyOptions({ crosshair: { mode } });
     rsiChart?.applyOptions({ crosshair: { mode } });
   }
@@ -405,7 +403,7 @@
           return;
         }
         const data = param.seriesData.get(candleSeries);
-        // @ts-ignore
+        // @ts-expect-error Lightweight Charts does not retain custom candle fields.
         const candle = data as Candle | undefined;
 
         if (candle && typeof candle.open === 'number') {
@@ -427,12 +425,12 @@
           return;
         }
         let timestampMs: number | null = null;
-        // @ts-ignore
+        // @ts-expect-error Lightweight Charts exposes a union for business-day timestamps.
         if (typeof param.time === 'number') {
           timestampMs = param.time * 1000;
-          // @ts-ignore
+          // @ts-expect-error Narrowed number timestamp is supported by Lightweight Charts.
         } else if (param.time && typeof param.time === 'object' && 'year' in param.time) {
-          // @ts-ignore
+          // @ts-expect-error Business-day shape is part of Lightweight Charts' time union.
           const t = param.time;
           timestampMs = Date.UTC(t.year, t.month - 1, t.day);
         }

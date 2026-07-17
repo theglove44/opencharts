@@ -5,6 +5,14 @@ const DEFAULT_MAX_CANDLE_RANGE_DAYS = 120;
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,15}$/;
+const MAX_LOOKBACK_DAYS: Record<Timeframe, number> = {
+  '1m': 7,
+  '5m': 30,
+  '10m': 60,
+  '30m': 90,
+  '60m': 180,
+  '1d': 5 * 365
+};
 
 export type DataMode = 'mock' | 'alpaca';
 
@@ -31,8 +39,11 @@ function getEnvNumber(name: string, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
-export function getMaxCandleRangeMs(): number {
-  return getEnvNumber('MAX_CANDLE_RANGE_DAYS', DEFAULT_MAX_CANDLE_RANGE_DAYS) * DAY_MS;
+export function getMaxCandleRangeMs(timeframe: Timeframe): number {
+  return Math.min(
+    getEnvNumber('MAX_CANDLE_RANGE_DAYS', DEFAULT_MAX_CANDLE_RANGE_DAYS) * DAY_MS,
+    MAX_LOOKBACK_DAYS[timeframe] * DAY_MS
+  );
 }
 
 export function normalizeDataMode(value = process.env.DATA_MODE): DataMode {
@@ -67,6 +78,7 @@ export function validateTimeframe(value: unknown): Timeframe {
 }
 
 export function defaultLookbackMs(_timeframe: Timeframe): number {
+  void _timeframe;
   return 90 * DAY_MS;
 }
 
@@ -80,8 +92,9 @@ export function validateCandleQuery(query: CandlesQuery, dataMode: DataMode): Va
     throw new Error('Invalid time range');
   }
 
-  if (toMs - fromMs > getMaxCandleRangeMs()) {
-    const maxDays = getEnvNumber('MAX_CANDLE_RANGE_DAYS', DEFAULT_MAX_CANDLE_RANGE_DAYS);
+  const maxRangeMs = getMaxCandleRangeMs(timeframe);
+  if (toMs - fromMs > maxRangeMs) {
+    const maxDays = Math.round(maxRangeMs / DAY_MS);
     throw new Error(`Time range exceeds ${maxDays} days`);
   }
 

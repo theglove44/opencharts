@@ -5,11 +5,19 @@ type LinePoint = { timestamp: number; value: number };
 
 type LineSeriesPoint = { time: UTCTimestamp; value: number };
 
-const LOOKBACK_DAYS = 90;
 const ONE_MINUTE_MS = 60_000;
 
-export function getLookbackMs(_: Timeframe) {
-  return LOOKBACK_DAYS * 24 * 60 * ONE_MINUTE_MS;
+const LOOKBACK_DAYS: Record<Timeframe, number> = {
+  '1m': 7,
+  '5m': 30,
+  '10m': 60,
+  '30m': 90,
+  '60m': 180,
+  '1d': 1825 // ~5 years
+};
+
+export function getLookbackMs(timeframe: Timeframe) {
+  return LOOKBACK_DAYS[timeframe] * 24 * 60 * ONE_MINUTE_MS;
 }
 
 export function getTimeframeMs(timeframe: Timeframe) {

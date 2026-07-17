@@ -23,7 +23,7 @@
 
   function toCoords(point: Point) {
     if (!point) return null;
-    const x = timeScale.timeToCoordinate((point.timestamp / 1000) as any);
+    const x = timeScale.timeToCoordinate((point.timestamp / 1000) as unknown as import('lightweight-charts').Time);
     const y = series.priceToCoordinate(point.price);
     if (x === null || y === null) return null;
     return { x, y };

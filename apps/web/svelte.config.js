@@ -1,8 +1,11 @@
-import adapter from '@sveltejs/adapter-auto';
-import preprocess from 'svelte-preprocess';
+import adapter from '@sveltejs/adapter-node';
 
 const config = {
-  preprocess: preprocess({ typescript: true }),
+  compilerOptions: {
+    compatibility: {
+      componentApi: 4
+    }
+  },
   kit: {
     adapter: adapter()
   }

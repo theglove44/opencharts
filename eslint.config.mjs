@@ -1,69 +1,53 @@
 import js from '@eslint/js';
-import tsPlugin from '@typescript-eslint/eslint-plugin';
-import tsParser from '@typescript-eslint/parser';
-import prettier from 'eslint-config-prettier';
+import tseslint from 'typescript-eslint';
 import svelte from 'eslint-plugin-svelte';
-import globals from 'globals';
 import svelteParser from 'svelte-eslint-parser';
+import tsParser from '@typescript-eslint/parser';
+import prettierConfig from 'eslint-config-prettier/flat';
+import globals from 'globals';
 
-export default [
+export default tseslint.config(
   {
-    ignores: ['**/node_modules/**', '**/dist/**', '**/.svelte-kit/**']
+    ignores: [
+      '**/node_modules/**',
+      '**/.svelte-kit/**',
+      '**/dist/**',
+      '**/build/**',
+      '**/coverage/**',
+      'apps/api/data/*'
+    ]
   },
   js.configs.recommended,
-  {
-    files: ['**/*.ts'],
-    languageOptions: {
-      parser: tsParser,
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-        ...globals.es2022
-      }
-    },
-    plugins: {
-      '@typescript-eslint': tsPlugin
-    },
-    rules: {
-      ...tsPlugin.configs.recommended.rules,
-      'no-undef': 'off',
-      'no-unused-vars': 'off',
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        {
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_'
-        }
-      ]
-    }
-  },
-  ...svelte.configs.recommended,
+  ...tseslint.configs.recommended,
+  ...svelte.configs['flat/recommended'],
   {
     files: ['**/*.svelte'],
     languageOptions: {
       parser: svelteParser,
-      parserOptions: {
-        parser: tsParser,
-        extraFileExtensions: ['.svelte']
-      },
-      globals: {
-        ...globals.browser,
-        ...globals.node,
-        ...globals.es2022
-      }
+      parserOptions: { parser: tsParser }
     },
     rules: {
-      'no-unused-vars': 'off',
       'svelte/prefer-svelte-reactivity': 'off'
     }
   },
   {
-    files: ['apps/web/src/app.d.ts'],
+    files: ['**/*.ts'],
     rules: {
-      '@typescript-eslint/no-empty-object-type': 'off'
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }
+      ]
     }
   },
-  prettier
-];
+  {
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.browser,
+        ...globals.node
+      }
+    }
+  },
+  prettierConfig
+);

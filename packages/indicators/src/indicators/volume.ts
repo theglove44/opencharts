@@ -3,6 +3,7 @@ import type { IndicatorPoint, IndicatorParams } from '../types';
 import { normalizeLength } from '../types';
 
 export function calculateVolume(candles: Candle[], _params: IndicatorParams): IndicatorPoint[] {
+  void _params;
   return candles.map((candle) => ({
     timestamp: candle.timestamp,
     value: candle.volume

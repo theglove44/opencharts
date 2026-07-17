@@ -1,6 +1,9 @@
 import 'dotenv/config';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
+import { TIMEFRAMES } from '@oss-charts/core';
 import { createCandleStore } from './db';
 import { createAlpacaTradeStream } from './providers/alpaca-stream';
 import { createCandleService } from './services/candles';
@@ -29,7 +32,30 @@ function getCorsOrigin() {
 }
 
 await server.register(cors, {
-  origin: getCorsOrigin()
+  origin: getCorsOrigin(),
+  credentials: true
+});
+
+await server.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute'
+});
+
+await server.register(helmet, {
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      connectSrc: ["'self'", 'wss:', 'https:'],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"]
+    }
+  }
 });
 
 const candleStore = createCandleStore();
@@ -49,7 +75,19 @@ server.get('/health', async () => ({ ok: true }));
 
 server.get('/symbols', async () => SUPPORTED_SYMBOLS);
 
-server.get('/candles', async (request, reply) => {
+server.get('/candles', {
+  schema: {
+    querystring: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', minLength: 1, maxLength: 16 },
+        tf: { type: 'string', enum: TIMEFRAMES },
+        from: { type: 'string', format: 'date-time' },
+        to: { type: 'string', format: 'date-time' }
+      }
+    }
+  }
+}, async (request, reply) => {
   let validated;
   try {
     validated = validateCandleQuery(request.query as CandlesQuery, dataMode);
@@ -73,7 +111,16 @@ server.get('/candles', async (request, reply) => {
   }
 });
 
-server.get('/latest', async (request, reply) => {
+server.get('/latest', {
+  schema: {
+    querystring: {
+      type: 'object',
+      properties: {
+        symbol: { type: 'string', minLength: 1, maxLength: 16 }
+      }
+    }
+  }
+}, async (request, reply) => {
   let symbol: string;
   try {
     symbol = validateSymbol((request.query as CandlesQuery).symbol, dataMode);
@@ -101,6 +148,6 @@ server.get('/latest', async (request, reply) => {
 });
 
 const port = Number(process.env.PORT || 3001);
-const host = process.env.HOST || '0.0.0.0';
+const host = process.env.HOST || '127.0.0.1';
 
 server.listen({ port, host });
