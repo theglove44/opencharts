@@ -49,9 +49,18 @@ export function createCandleStore(): CandleStore {
     'SELECT timestamp, open, high, low, close, volume FROM candles WHERE symbol = ? AND timestamp >= ? AND timestamp <= ? ORDER BY timestamp ASC'
   );
 
-  const insertStmt = db.prepare(
+const insertStmt = db.prepare(
     'INSERT OR REPLACE INTO candles (symbol, timestamp, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)'
   );
+
+  type CandleRow = {
+    timestamp: number;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+  };
 
   function invalidateToday() {
     const today = getNyDate(Date.now());
@@ -64,14 +73,17 @@ export function createCandleStore(): CandleStore {
   }
 
   function getCandles(symbol: string, fromMs: number, toMs: number): Candle[] {
-    return getCandlesStmt.all(symbol, fromMs, toMs).map((row: any) => ({
-      timestamp: row.timestamp as number,
-      open: row.open as number,
-      high: row.high as number,
-      low: row.low as number,
-      close: row.close as number,
-      volume: row.volume as number
-    }));
+    return getCandlesStmt.all(symbol, fromMs, toMs).map((row) => {
+      const candle = row as CandleRow;
+      return {
+        timestamp: candle.timestamp,
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume
+      };
+    });
   }
 
   function insertCandles(symbol: string, candles: Candle[]) {

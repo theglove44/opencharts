@@ -1,0 +1,7 @@
+{
+    "$schema": "https://openapi.vercel.sh/vercel.json",
+    "framework": "sveltekit",
+    "installCommand": "cd ../.. && pnpm install",
+    "buildCommand": "cd ../.. && pnpm --filter @oss-charts/core build && pnpm --filter @oss-charts/indicators build && pnpm --filter @oss-charts/web build",
+    "outputDirectory": ".svelte-kit/output"
+}

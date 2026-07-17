@@ -1,4 +1,5 @@
-import { Candle, Timeframe, timeframeToMinutes } from './types';
+import type { Candle, Timeframe } from './types';
+import { timeframeToMinutes } from './types';
 import { getSessionStartMs, isRegularSessionMinute } from './session';
 
 const MINUTE_MS = 60_000;
@@ -43,12 +44,21 @@ function finalizeBuckets(buckets: Map<number, CandleBucket>): Candle[] {
     }));
 }
 
+function getIntradayBucketStartMs(timestamp: number, minutes: number): number {
+  if (!isRegularSessionMinute(timestamp)) {
+    return Math.floor(timestamp / MINUTE_MS / minutes) * minutes * MINUTE_MS;
+  }
+
+  const sessionStart = getSessionStartMs(timestamp);
+  const elapsedMinutes = Math.floor((timestamp - sessionStart) / MINUTE_MS);
+  return sessionStart + Math.floor(elapsedMinutes / minutes) * minutes * MINUTE_MS;
+}
+
 function resampleIntraday(candles: Candle[], minutes: number): Candle[] {
   const buckets = new Map<number, CandleBucket>();
   const sorted = [...candles].sort((a, b) => a.timestamp - b.timestamp);
   for (const candle of sorted) {
-    const bucketStart =
-      Math.floor(candle.timestamp / MINUTE_MS / minutes) * minutes * MINUTE_MS;
+    const bucketStart = getIntradayBucketStartMs(candle.timestamp, minutes);
     let bucket = buckets.get(bucketStart);
     if (!bucket) {
       bucket = {

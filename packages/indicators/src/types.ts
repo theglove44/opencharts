@@ -1,17 +1,20 @@
 import type { Candle, PriceSource } from '@oss-charts/core';
 
-export type IndicatorType =
-  | 'sma'
-  | 'ema'
-  | 'rsi'
-  | 'vwap'
-  | 'macd'
-  | 'macdSignal'
-  | 'macdHistogram'
-  | 'bollinger'
-  | 'volume'
-  | 'volumeMA'
-  | 'atr';
+export const INDICATOR_TYPES = [
+  'sma',
+  'ema',
+  'rsi',
+  'vwap',
+  'macd',
+  'macdSignal',
+  'macdHistogram',
+  'bollinger',
+  'volume',
+  'volumeMA',
+  'atr'
+] as const;
+
+export type IndicatorType = (typeof INDICATOR_TYPES)[number];
 
 export type IndicatorPane = 'overlay' | 'separate';
 
@@ -61,4 +64,13 @@ export function getSourceValue(candle: Candle, source: PriceSource): number {
     default:
       return candle.close;
   }
+}
+
+export function isIndicatorType(value: unknown): value is IndicatorType {
+  return typeof value === 'string' && INDICATOR_TYPES.includes(value as IndicatorType);
+}
+
+export function normalizeLength(value: unknown, fallback = 1): number {
+  const numberValue = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(numberValue) && numberValue > 0 ? Math.floor(numberValue) : fallback;
 }

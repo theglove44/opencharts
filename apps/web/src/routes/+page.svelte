@@ -1,11 +1,13 @@
 <script lang="ts">
-  import { onMount, tick } from 'svelte';
-  import type { Timeframe } from '@oss-charts/core';
+  import { onMount } from 'svelte';
+  import type { PriceSource, Timeframe } from '@oss-charts/core';
   import { TIMEFRAMES } from '@oss-charts/core';
   import {
     indicatorRegistry,
     type IndicatorInstance,
+    type IndicatorParams,
     type IndicatorType,
+    isIndicatorType,
   } from '@oss-charts/indicators';
   import type { Drawing, DrawingType } from '$lib/types/drawing';
   import { fetchSymbols } from '$lib/api';
@@ -24,6 +26,7 @@
   }
 
   type LayoutType = 'single' | '1-2' | '2-1' | '2-2' | '1-3' | '3-1';
+  type IndicatorUpdater = (indicator: IndicatorInstance) => IndicatorInstance;
 
   // --- STATE ---
   let layout: LayoutType = 'single';
@@ -32,7 +35,6 @@
   let syncSymbol = false;
 
   let availableSymbols: string[] = ['SPY'];
-  let loadingSymbols = false;
 
   // Global UI State
   let showIndicators = false;
@@ -44,10 +46,6 @@
   let crosshairSnap = true;
   let activeTool: DrawingType | null = null;
 
-  // Crosshair Mode Reference (loaded dynamically)
-  let crosshairModeRef: typeof import('lightweight-charts').CrosshairMode | null = null;
-  let lwc: typeof import('lightweight-charts') | null = null;
-
   // Active chart getters for toolbar binding
   $: activeChart = charts.find((c) => c.id === activeChartId) || charts[0];
   $: activeSymbol = activeChart?.symbol || 'SPY';
@@ -56,6 +54,9 @@
   // --- STORAGE KEYS ---
   const STORAGE_KEY = 'oss-charts-state-v2';
   const PRESETS_KEY = 'oss-charts-presets';
+  const layoutTypes = ['single', '1-2', '2-1', '2-2', '1-3', '3-1'] as const;
+  const implementedDrawingTypes = ['trendline', 'horizontal_line', 'fibonacci'] as const;
+  const colorPattern = /^#[0-9a-f]{3,8}$/i;
 
   // --- INITIALIZATION ---
   function createId() {
@@ -72,19 +73,136 @@
       indicators: [
         { id: createId(), type: 'sma', params: { length: 20, source: 'close' } },
         { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } },
-        { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } },
       ],
       drawings: [],
     };
   }
 
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function isTimeframe(value: unknown): value is Timeframe {
+    return typeof value === 'string' && TIMEFRAMES.includes(value as Timeframe);
+  }
+
+  function isLayoutType(value: unknown): value is LayoutType {
+    return typeof value === 'string' && layoutTypes.includes(value as LayoutType);
+  }
+
+  function isPriceSource(value: unknown): value is PriceSource {
+    return typeof value === 'string' && sources.includes(value as PriceSource);
+  }
+
+  function finiteNumber(value: unknown): number | null {
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  }
+
+  function positiveInteger(value: unknown, fallback: number): number {
+    const numberValue = finiteNumber(value);
+    return numberValue && numberValue > 0 ? Math.floor(numberValue) : fallback;
+  }
+
+  function sanitizeIndicator(value: unknown): IndicatorInstance | null {
+    if (!isRecord(value) || !isIndicatorType(value.type)) {
+      return null;
+    }
+
+    const def = indicatorRegistry[value.type];
+    const rawParams = isRecord(value.params) ? value.params : {};
+    const params: IndicatorParams = {
+      ...def.defaultParams,
+      source: isPriceSource(rawParams.source) ? rawParams.source : def.defaultParams.source,
+      length: positiveInteger(rawParams.length, def.defaultParams.length),
+    };
+
+    if (typeof rawParams.anchorIso === 'string' && Number.isFinite(Date.parse(rawParams.anchorIso))) {
+      params.anchorIso = rawParams.anchorIso;
+    }
+    if (finiteNumber(rawParams.macdFast)) params.macdFast = positiveInteger(rawParams.macdFast, 12);
+    if (finiteNumber(rawParams.macdSlow)) params.macdSlow = positiveInteger(rawParams.macdSlow, 26);
+    if (finiteNumber(rawParams.macdSignal)) params.macdSignal = positiveInteger(rawParams.macdSignal, 9);
+    if (finiteNumber(rawParams.stdDev)) params.stdDev = Math.max(0.1, rawParams.stdDev as number);
+
+    return {
+      id: typeof value.id === 'string' && value.id.length <= 80 ? value.id : createId(),
+      type: value.type,
+      params,
+    };
+  }
+
+  function sanitizeDrawing(value: unknown): Drawing | null {
+    if (!isRecord(value) || typeof value.type !== 'string') {
+      return null;
+    }
+    if (!implementedDrawingTypes.includes(value.type as (typeof implementedDrawingTypes)[number])) {
+      return null;
+    }
+
+    const points = Array.isArray(value.points)
+      ? value.points
+          .map((point) => {
+            if (!isRecord(point)) return null;
+            const timestamp = finiteNumber(point.timestamp);
+            const price = finiteNumber(point.price);
+            return timestamp !== null && price !== null ? { timestamp, price } : null;
+          })
+          .filter((point): point is { timestamp: number; price: number } => point !== null)
+          .slice(0, 2)
+      : [];
+
+    if (points.length === 0) {
+      return null;
+    }
+
+    const properties = isRecord(value.properties) ? value.properties : {};
+    const fibLevels = Array.isArray(properties.fibLevels)
+      ? properties.fibLevels
+          .filter((level): level is number => typeof level === 'number' && Number.isFinite(level))
+          .slice(0, 12)
+      : undefined;
+
+    return {
+      id: typeof value.id === 'string' && value.id.length <= 80 ? value.id : createId(),
+      type: value.type as DrawingType,
+      points,
+      properties: {
+        color:
+          typeof properties.color === 'string' && colorPattern.test(properties.color)
+            ? properties.color
+            : '#38bdf8',
+        lineWidth: Math.min(8, positiveInteger(properties.lineWidth, 2)),
+        lineStyle:
+          properties.lineStyle === 'dashed' || properties.lineStyle === 'dotted'
+            ? properties.lineStyle
+            : 'solid',
+        fibLevels,
+      },
+    };
+  }
+
+  function sanitizeChartState(value: unknown): ChartState | null {
+    if (!isRecord(value)) {
+      return null;
+    }
+    const indicators = Array.isArray(value.indicators)
+      ? value.indicators.map(sanitizeIndicator).filter((item): item is IndicatorInstance => item !== null)
+      : [];
+    const drawings = Array.isArray(value.drawings)
+      ? value.drawings.map(sanitizeDrawing).filter((item): item is Drawing => item !== null)
+      : [];
+
+    return {
+      id: typeof value.id === 'string' && value.id.length <= 80 ? value.id : createId(),
+      symbol: typeof value.symbol === 'string' ? value.symbol.slice(0, 16).toUpperCase() : 'SPY',
+      timeframe: isTimeframe(value.timeframe) ? value.timeframe : '5m',
+      indicators,
+      drawings,
+    };
+  }
+
   function loadState() {
     try {
-      // Try parsing URL first
-      const url = new URL(window.location.href);
-      // Simple URL param support for single chart mainly, or we could encode multiple
-      // For now, let's just stick to local storage for the multi-layout complexity
-
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
         // Default startup
@@ -93,27 +211,20 @@
         return;
       }
 
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as unknown;
       // Migration or Simple check
-      if (parsed.charts && Array.isArray(parsed.charts)) {
-        charts = parsed.charts.map((c: any) => ({
-          ...c,
-          drawings: c.drawings || [],
-        }));
-        layout = parsed.layout || 'single';
-        activeChartId = parsed.activeChartId || charts[0]?.id;
-        syncSymbol = parsed.syncSymbol ?? false;
+      if (isRecord(parsed) && Array.isArray(parsed.charts)) {
+        const loadedCharts = parsed.charts
+          .map(sanitizeChartState)
+          .filter((chart): chart is ChartState => chart !== null);
+        charts = loadedCharts.length > 0 ? loadedCharts : [createChartState()];
+        layout = isLayoutType(parsed.layout) ? parsed.layout : 'single';
+        activeChartId = typeof parsed.activeChartId === 'string' ? parsed.activeChartId : charts[0]?.id;
+        syncSymbol = parsed.syncSymbol === true;
       } else {
         // Old format migration
-        charts = [
-          {
-            id: createId(),
-            symbol: parsed.symbol || 'SPY',
-            timeframe: parsed.timeframe || '5m',
-            indicators: parsed.indicators || [],
-            drawings: parsed.drawings || [],
-          },
-        ];
+        const migrated = sanitizeChartState(parsed);
+        charts = [migrated ?? createChartState()];
         activeChartId = charts[0].id;
       }
 
@@ -139,25 +250,6 @@
   }
 
   function updateChartsForLayout(newLayout: LayoutType) {
-    const countMap: Record<LayoutType, number> = {
-      single: 1,
-      '1-2': 2, // 1 top, 2 bottom? or just 2 charts total? Let's assume 2 chars split
-      '2-1': 2,
-      '2-2': 4,
-      '1-3': 4,
-      '3-1': 4,
-    };
-    // Actually, looking at the screenshot:
-    // Row 2: 2 cols side-by-side, or 2 rows stacked?
-    // Icons show:
-    // 1. Single
-    // 2. Parallel vertical (2 cols)
-    // 3. Parallel horizontal (2 rows)
-    // 4. 2 cols, left one split (3 total) - wait, icon 4 is left split?
-    // 5. 2 cols, right one split
-    // 6. 3 cols?
-    // Let's implement a target count based on the layout and fill/trim `charts` array.
-
     let targetCount = 1;
     switch (newLayout) {
       case 'single':
@@ -266,7 +358,7 @@
     saveState();
   }
 
-  function updateIndicator(indId: string, updater: (cur: IndicatorInstance) => IndicatorInstance) {
+  function updateIndicator(indId: string, updater: IndicatorUpdater) {
     charts = charts.map((c) =>
       c.id === activeChartId
         ? {
@@ -280,9 +372,13 @@
 
   function handleSourceUpdate(indId: string, e: Event) {
     const target = e.currentTarget as HTMLSelectElement;
-    updateIndicator(indId, (c) => ({
-      ...c,
-      params: { ...c.params, source: target.value as any },
+    const source = target.value;
+    if (!isPriceSource(source)) {
+      return;
+    }
+    updateIndicator(indId, (indicator) => ({
+      ...indicator,
+      params: { ...indicator.params, source },
     }));
   }
 
@@ -290,7 +386,20 @@
   function loadPresets() {
     try {
       const raw = localStorage.getItem(PRESETS_KEY);
-      if (raw) savedPresets = JSON.parse(raw);
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      savedPresets = Array.isArray(parsed)
+        ? parsed
+            .filter((preset): preset is Record<string, unknown> => isRecord(preset))
+            .map((preset) => ({
+              name: typeof preset.name === 'string' ? preset.name.slice(0, 80) : '',
+              indicators: Array.isArray(preset.indicators)
+                ? preset.indicators
+                    .map(sanitizeIndicator)
+                    .filter((indicator): indicator is IndicatorInstance => indicator !== null)
+                : [],
+            }))
+            .filter((preset) => preset.name.length > 0)
+        : [];
     } catch {
       savedPresets = [];
     }
@@ -305,9 +414,10 @@
     const existing = savedPresets.findIndex((p) => p.name === presetName.trim());
     const preset = {
       name: presetName.trim(),
-      indicators: JSON.parse(JSON.stringify(activeChart.indicators)).map((i: any) => ({
-        ...i,
+      indicators: activeChart.indicators.map((indicator) => ({
+        ...indicator,
         id: createId(),
+        params: { ...indicator.params },
       })),
     };
 
@@ -340,10 +450,6 @@
 
   // --- COMPONENT LIFECYCLE ---
   onMount(async () => {
-    // Dynamically import LWC for prop passing
-    lwc = await import('lightweight-charts');
-    crosshairModeRef = lwc.CrosshairMode;
-
     loadState();
     loadPresets();
     fetchSymbols().then((syms) => (availableSymbols = syms));
@@ -354,10 +460,6 @@
       activeChartId = charts[0].id;
     }
   });
-
-  // --- HELPERS ---
-  // Anchor picking proxy
-  let chartViewports: Record<string, ChartViewport> = {}; // Bound refs if needed, or just use event dispatching
 
   function handleAnchorPick(event: CustomEvent<{ id: string; timestampMs: number }>) {
     // Logic for Anchor VWAP or similar
@@ -370,17 +472,8 @@
     }));
   }
 
-  function triggerAnchorPick(indicatorId: string) {
-    // Find the ref for active chart and call method?
-    // Svelte bind:this inside each might be tricky with dynamic array.
-    // Alternative: Just set a global "picking" state?
-    // Actually ChartViewport needs to know.
-    // Let's rely on ChartViewport instance methods.
-    // We'll bind the components in the #each loop.
-  }
-
   // We need a map of component instances to call methods on them
-  let viewportInstances = new Map<string, ChartViewport>();
+  let viewportInstances: Record<string, ChartViewport> = {};
 
   function toggleFullscreen() {
     isFullscreen = !isFullscreen;
@@ -421,8 +514,8 @@
           list="symbol-suggestions"
         />
         <datalist id="symbol-suggestions">
-          {#each availableSymbols as sym}
-            <option value={sym} />
+          {#each availableSymbols as sym (sym)}
+            <option value={sym}></option>
           {/each}
         </datalist>
 
@@ -433,7 +526,7 @@
       </div>
 
       <div class="timeframes">
-        {#each TIMEFRAMES as tf}
+        {#each TIMEFRAMES as tf (tf)}
           <button class:selected={tf === activeTimeframe} on:click={() => setTimeframe(tf)}>
             {tf.toUpperCase()}
           </button>
@@ -529,7 +622,7 @@
               <button class="add" on:click={saveCurrentAsPreset}>Save</button>
             </div>
             {#if savedPresets.length === 0}<p class="empty">No saved presets.</p>{/if}
-            {#each savedPresets as preset}
+            {#each savedPresets as preset (preset.name)}
               <div class="preset-item">
                 <button class="preset-load" on:click={() => applyPreset(preset)}>
                   {preset.name}
@@ -551,7 +644,7 @@
             <div class="panel-header">Active Chart Indicators</div>
             <div class="panel-row">
               <select bind:value={selectedIndicator}>
-                {#each Object.values(indicatorRegistry) as indicator}
+                {#each Object.values(indicatorRegistry) as indicator (indicator.type)}
                   <option value={indicator.type}>{indicator.name}</option>
                 {/each}
               </select>
@@ -586,7 +679,7 @@
                         value={indicator.params.source}
                         on:change={(e) => handleSourceUpdate(indicator.id, e)}
                       >
-                        {#each sources as s}<option value={s}>{s}</option>{/each}
+                        {#each sources as s (s)}<option value={s}>{s}</option>{/each}
                       </select>
                     </label>
                   {:else}
@@ -604,7 +697,7 @@
                     <button
                       class="anchor-btn"
                       on:click={() =>
-                        viewportInstances.get(activeChartId)?.beginAnchorPick(indicator.id)}
+                        viewportInstances[activeChartId]?.beginAnchorPick(indicator.id)}
                     >
                       Pick on Chart
                     </button>

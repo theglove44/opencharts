@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { resampleCandles } from '../src/resample';
-import { Candle } from '../src/types';
+import type { Candle } from '../src/types';
+import { isRegularSessionMinute } from '../src/session';
 
 const base = Date.UTC(2024, 0, 2, 14, 30, 0, 0);
 
@@ -87,5 +88,32 @@ describe('resampleCandles', () => {
     expect(resampled[1].timestamp).toBe(day2);
     expect(resampled[1].open).toBe(102);
     expect(resampled[1].close).toBe(103);
+  });
+
+  it('anchors 60m bars to the NY session open', () => {
+    const candles: Candle[] = [
+      makeCandle(0, { open: 100, high: 101, low: 99, close: 100, volume: 10 }),
+      makeCandle(59, { open: 100, high: 102, low: 98, close: 101, volume: 11 }),
+      makeCandle(60, { open: 101, high: 103, low: 100, close: 102, volume: 12 })
+    ];
+
+    const resampled = resampleCandles(candles, '60m');
+
+    expect(resampled).toHaveLength(2);
+    expect(resampled[0].timestamp).toBe(base);
+    expect(resampled[0].close).toBe(101);
+    expect(resampled[1].timestamp).toBe(base + 60 * 60_000);
+    expect(resampled[1].open).toBe(101);
+  });
+
+  it('treats 16:00 NY as outside the regular session', () => {
+    const atOpen = Date.UTC(2024, 0, 2, 14, 30, 0, 0);
+    const beforeClose = Date.UTC(2024, 0, 2, 20, 59, 0, 0);
+    const atClose = Date.UTC(2024, 0, 2, 21, 0, 0, 0);
+
+    expect(isRegularSessionMinute(atOpen - 60_000)).toBe(false);
+    expect(isRegularSessionMinute(atOpen)).toBe(true);
+    expect(isRegularSessionMinute(beforeClose)).toBe(true);
+    expect(isRegularSessionMinute(atClose)).toBe(false);
   });
 });

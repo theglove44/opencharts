@@ -1,7 +1,7 @@
 import type { Candle } from '@oss-charts/core';
 import type { IndicatorPoint, IndicatorParams } from '../types';
+import { normalizeLength } from '../types';
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function calculateVolume(candles: Candle[], _params: IndicatorParams): IndicatorPoint[] {
   return candles.map((candle) => ({
     timestamp: candle.timestamp,
@@ -10,7 +10,7 @@ export function calculateVolume(candles: Candle[], _params: IndicatorParams): In
 }
 
 export function calculateVolumeMA(candles: Candle[], params: IndicatorParams): IndicatorPoint[] {
-  const length = Math.max(1, Math.floor(params.length));
+  const length = normalizeLength(params.length);
   if (candles.length < length) {
     return [];
   }

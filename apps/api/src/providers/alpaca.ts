@@ -3,16 +3,34 @@ import type { Candle } from '@oss-charts/core';
 const DEFAULT_BASE_URL = 'https://data.alpaca.markets';
 const DEFAULT_FEED = 'iex';
 const RETRY_DELAYS = [500, 1000, 2000];
+const DEFAULT_TIMEOUT_MS = 10_000;
+const DEFAULT_MAX_PAGES = 10;
 
 function getAlpacaFeed() {
   return (process.env.ALPACA_DATA_FEED || DEFAULT_FEED).toLowerCase();
+}
+
+function getEnvNumber(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) {
+    return fallback;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function buildAlpacaUrl(baseUrl: string, path: string): URL {
+  return new URL(path, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`);
 }
 
 async function fetchWithRetry(url: string, options: RequestInit): Promise<Response> {
   let lastError: Error | null = null;
   for (let i = 0; i < RETRY_DELAYS.length; i += 1) {
     try {
-      const response = await fetch(url, options);
+      const response = await fetch(url, {
+        ...options,
+        signal: AbortSignal.timeout(getEnvNumber('ALPACA_TIMEOUT_MS', DEFAULT_TIMEOUT_MS))
+      });
       if (response.ok) {
         return response;
       }
@@ -24,6 +42,9 @@ async function fetchWithRetry(url: string, options: RequestInit): Promise<Respon
       throw new Error(`Alpaca error ${response.status}: ${body}`);
     } catch (error) {
       lastError = error as Error;
+      if (lastError.message.startsWith('Alpaca error')) {
+        throw lastError;
+      }
       await new Promise((resolve) => setTimeout(resolve, RETRY_DELAYS[i]));
     }
   }
@@ -44,9 +65,16 @@ export async function fetchAlpacaCandles(
   const baseUrl = process.env.ALPACA_BASE_URL || DEFAULT_BASE_URL;
   const candles: Candle[] = [];
   let pageToken: string | undefined;
+  let pageCount = 0;
+  const maxPages = getEnvNumber('ALPACA_MAX_PAGES', DEFAULT_MAX_PAGES);
 
   do {
-    const url = new URL(`${baseUrl}/v2/stocks/${symbol}/bars`);
+    pageCount += 1;
+    if (pageCount > maxPages) {
+      throw new Error(`Alpaca pagination limit exceeded (${maxPages} pages)`);
+    }
+
+    const url = buildAlpacaUrl(baseUrl, `v2/stocks/${encodeURIComponent(symbol)}/bars`);
     url.searchParams.set('timeframe', '1Min');
     url.searchParams.set('start', new Date(fromMs).toISOString());
     url.searchParams.set('end', new Date(toMs).toISOString());
@@ -97,7 +125,7 @@ export async function fetchAlpacaLatestTrade(symbol: string): Promise<{
   }
 
   const baseUrl = process.env.ALPACA_BASE_URL || DEFAULT_BASE_URL;
-  const url = new URL(`${baseUrl}/v2/stocks/${symbol}/trades/latest`);
+  const url = buildAlpacaUrl(baseUrl, `v2/stocks/${encodeURIComponent(symbol)}/trades/latest`);
   url.searchParams.set('feed', getAlpacaFeed());
 
   const response = await fetchWithRetry(url.toString(), {

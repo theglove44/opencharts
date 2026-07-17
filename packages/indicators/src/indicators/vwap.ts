@@ -9,6 +9,7 @@ function getAnchorIndex(candles: Candle[], params: IndicatorParams): number {
       if (index >= 0) {
         return index;
       }
+      return candles.length;
     }
   }
   return 0;

@@ -30,7 +30,7 @@ export function createAlpacaTradeStream(symbols: string[]): AlpacaTradeStream {
 
   const feed = (process.env.ALPACA_DATA_FEED || 'iex').toLowerCase();
   const baseUrl = process.env.ALPACA_STREAM_URL || DEFAULT_STREAM_URL;
-  const streamUrl = `${baseUrl}/${feed}`;
+  const streamUrl = `${baseUrl.replace(/\/+$/, '')}/${encodeURIComponent(feed)}`;
 
   const latestBySymbol = new Map<string, LatestTrade>();
   let socket: WebSocket | null = null;

@@ -11,15 +11,30 @@
     "format": "prettier --write ."
   },
   "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^7.18.0",
-    "@typescript-eslint/parser": "^7.18.0",
-    "concurrently": "^8.2.2",
-    "eslint": "^8.57.0",
-    "eslint-config-prettier": "^9.1.0",
-    "eslint-plugin-svelte": "^2.44.1",
-    "prettier": "^3.3.3",
-    "svelte-eslint-parser": "^0.41.0",
-    "typescript": "^5.5.4",
-    "vitest": "^1.6.0"
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^25.9.1",
+    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/parser": "^8.60.1",
+    "concurrently": "^10.0.3",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.19.0",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3",
+    "svelte-eslint-parser": "^1.8.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
+  },
+  "pnpm": {
+    "overrides": {
+      "ajv@>=7.0.0-alpha.0 <8.18.0": "8.20.0",
+      "brace-expansion@<1.1.13": "1.1.13",
+      "cookie": "^0.7.0",
+      "fast-uri": "^3.1.2",
+      "flatted": "^3.4.2",
+      "postcss": "^8.5.15",
+      "rollup": "^4.61.1",
+      "yaml@>=1.0.0 <1.10.3": "1.10.3"
+    }
   }
 }

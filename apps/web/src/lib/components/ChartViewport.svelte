@@ -1,16 +1,14 @@
 <script lang="ts">
-  import { onMount, tick, createEventDispatcher } from 'svelte';
+  import { onMount, createEventDispatcher } from 'svelte';
 
   import type { IChartApi, ISeriesApi } from 'lightweight-charts';
   import type { Candle, Timeframe } from '@oss-charts/core';
   import {
-    formatTimestamp,
     getLookbackMs,
     getTimeframeMs,
     toCandlestickData,
     toCandlestickPoint,
     toLineData,
-    toLocalInputValue,
   } from '$lib/chart-helpers';
   import {
     indicatorRegistry,
@@ -20,6 +18,10 @@
   import { fetchCandles, fetchLatestPrice } from '$lib/api';
   import ChartDrawings from './ChartDrawings.svelte';
   import type { Drawing, DrawingType } from '$lib/types/drawing';
+
+  type VisibleRangeHandler = Parameters<
+    ReturnType<IChartApi['timeScale']>['subscribeVisibleTimeRangeChange']
+  >[0];
 
   const dispatch = createEventDispatcher();
   const palette = ['#f97316', '#22c55e', '#0ea5e9', '#eab308', '#ef4444', '#8b5cf6'];
@@ -48,7 +50,7 @@
 
   let createChartFn: typeof import('lightweight-charts').createChart | null = null;
   let crosshairModeRef: typeof import('lightweight-charts').CrosshairMode | null = null;
-  let syncVisibleRange: ((range: any) => void) | null = null;
+  let syncVisibleRange: VisibleRangeHandler | null = null;
   let allowRangeSync = false;
 
   let candles: Candle[] = [];
@@ -59,7 +61,6 @@
   let fullRefreshTimer: ReturnType<typeof setInterval> | null = null;
   let refreshInFlight = false;
   let latestInFlight = false;
-  let lastBarUpdatedAt = '';
   let anchorPickId: string | null = null;
   let noData = false;
 
@@ -89,12 +90,6 @@
     // Reference crosshairSnap to make this reactive to its changes
     crosshairSnap;
     applyCrosshairMode();
-  }
-
-  function createId() {
-    return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `id-${Math.random().toString(36).slice(2, 9)}`;
   }
 
   function buildChart(container: HTMLDivElement) {
@@ -266,7 +261,7 @@
         }
         try {
           rsiChart.timeScale().setVisibleRange(range);
-        } catch (err) {
+        } catch {
           return;
         }
       };
@@ -293,7 +288,6 @@
       allowRangeSync = candles.length > 0;
       const last = candles[candles.length - 1];
       crosshair = last ?? null;
-      lastBarUpdatedAt = last ? formatTimestamp(last.timestamp) : '';
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load candles';
     } finally {
@@ -477,7 +471,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="chart-card" class:active={isActive} on:click={() => dispatch('activate')}>
+<div class="chart-card" class:active={isActive} data-chart-id={id} on:click={() => dispatch('activate')}>
   <div class="legend">
     <span class="legend-symbol">{symbol}</span>
     {#if crosshair}
@@ -499,7 +493,7 @@
         </span>
       </div>
     {/if}
-    {#each indicators.filter((indicator) => indicatorRegistry[indicator.type].pane === 'overlay') as indicator}
+    {#each indicators.filter((indicator) => indicatorRegistry[indicator.type].pane === 'overlay') as indicator (indicator.id)}
       <span
         class="legend-item"
         style="--indicator-color: {getIndicatorColor(indicator.id)}"
@@ -551,7 +545,7 @@
     <div class="rsi-section">
       <div class="legend">
         <span class="legend-title">Oscillators</span>
-        {#each indicators.filter((indicator) => indicatorRegistry[indicator.type].pane === 'separate') as indicator}
+        {#each indicators.filter((indicator) => indicatorRegistry[indicator.type].pane === 'separate') as indicator (indicator.id)}
           <span
             class="legend-item"
             style="--indicator-color: {getIndicatorColor(indicator.id)}"

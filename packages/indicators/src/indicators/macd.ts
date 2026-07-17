@@ -1,6 +1,6 @@
 import type { Candle } from '@oss-charts/core';
 import type { IndicatorPoint, IndicatorParams } from '../types';
-import { getSourceValue } from '../types';
+import { getSourceValue, normalizeLength } from '../types';
 
 export type MACDResult = {
   macd: IndicatorPoint[];
@@ -29,16 +29,23 @@ function computeEMA(values: number[], length: number): number[] {
   return result;
 }
 
-export function calculateMACD(candles: Candle[], params: IndicatorParams): IndicatorPoint[] {
-  const fastLength = params.macdFast ?? 12;
-  const slowLength = params.macdSlow ?? 26;
-  const signalLength = params.macdSignal ?? 9;
+type MACDParts = {
+  macdLine: number[];
+  signalLine: number[];
+  startIndex: number;
+  histogramOffset: number;
+};
 
-  if (candles.length < slowLength + signalLength) {
-    return [];
+function computeMACDParts(candles: Candle[], params: IndicatorParams): MACDParts | null {
+  const fastLength = normalizeLength(params.macdFast, 12);
+  const slowLength = normalizeLength(params.macdSlow, 26);
+  const signalLength = normalizeLength(params.macdSignal, 9);
+
+  if (fastLength >= slowLength || candles.length < slowLength + signalLength) {
+    return null;
   }
 
-  const values = candles.map((c) => getSourceValue(c, params.source));
+  const values = candles.map((candle) => getSourceValue(candle, params.source));
   const fastEMA = computeEMA(values, fastLength);
   const slowEMA = computeEMA(values, slowLength);
 
@@ -50,15 +57,24 @@ export function calculateMACD(candles: Candle[], params: IndicatorParams): Indic
 
   const signalLine = computeEMA(macdLine, signalLength);
   const histogramOffset = signalLength - 1;
+  const startIndex = slowLength - 1 + histogramOffset;
+
+  return { macdLine, signalLine, startIndex, histogramOffset };
+}
+
+export function calculateMACD(candles: Candle[], params: IndicatorParams): IndicatorPoint[] {
+  const parts = computeMACDParts(candles, params);
+  if (!parts) {
+    return [];
+  }
 
   const points: IndicatorPoint[] = [];
-  const startIndex = slowLength - 1 + signalLength - 1;
 
-  for (let i = 0; i < signalLine.length; i++) {
-    const candleIndex = startIndex + i;
+  for (let i = 0; i < parts.signalLine.length; i++) {
+    const candleIndex = parts.startIndex + i;
     if (candleIndex >= candles.length) break;
 
-    const macdValue = macdLine[i + histogramOffset];
+    const macdValue = parts.macdLine[i + parts.histogramOffset];
     points.push({
       timestamp: candles[candleIndex].timestamp,
       value: macdValue
@@ -69,35 +85,19 @@ export function calculateMACD(candles: Candle[], params: IndicatorParams): Indic
 }
 
 export function calculateMACDSignal(candles: Candle[], params: IndicatorParams): IndicatorPoint[] {
-  const fastLength = params.macdFast ?? 12;
-  const slowLength = params.macdSlow ?? 26;
-  const signalLength = params.macdSignal ?? 9;
-
-  if (candles.length < slowLength + signalLength) {
+  const parts = computeMACDParts(candles, params);
+  if (!parts) {
     return [];
   }
 
-  const values = candles.map((c) => getSourceValue(c, params.source));
-  const fastEMA = computeEMA(values, fastLength);
-  const slowEMA = computeEMA(values, slowLength);
-
-  const offset = slowLength - fastLength;
-  const macdLine: number[] = [];
-  for (let i = 0; i < slowEMA.length; i++) {
-    macdLine.push(fastEMA[i + offset] - slowEMA[i]);
-  }
-
-  const signalLine = computeEMA(macdLine, signalLength);
-  const startIndex = slowLength - 1 + signalLength - 1;
-
   const points: IndicatorPoint[] = [];
-  for (let i = 0; i < signalLine.length; i++) {
-    const candleIndex = startIndex + i;
+  for (let i = 0; i < parts.signalLine.length; i++) {
+    const candleIndex = parts.startIndex + i;
     if (candleIndex >= candles.length) break;
 
     points.push({
       timestamp: candles[candleIndex].timestamp,
-      value: signalLine[i]
+      value: parts.signalLine[i]
     });
   }
 
@@ -105,35 +105,18 @@ export function calculateMACDSignal(candles: Candle[], params: IndicatorParams):
 }
 
 export function calculateMACDHistogram(candles: Candle[], params: IndicatorParams): IndicatorPoint[] {
-  const fastLength = params.macdFast ?? 12;
-  const slowLength = params.macdSlow ?? 26;
-  const signalLength = params.macdSignal ?? 9;
-
-  if (candles.length < slowLength + signalLength) {
+  const parts = computeMACDParts(candles, params);
+  if (!parts) {
     return [];
   }
 
-  const values = candles.map((c) => getSourceValue(c, params.source));
-  const fastEMA = computeEMA(values, fastLength);
-  const slowEMA = computeEMA(values, slowLength);
-
-  const offset = slowLength - fastLength;
-  const macdLine: number[] = [];
-  for (let i = 0; i < slowEMA.length; i++) {
-    macdLine.push(fastEMA[i + offset] - slowEMA[i]);
-  }
-
-  const signalLine = computeEMA(macdLine, signalLength);
-  const histogramOffset = signalLength - 1;
-  const startIndex = slowLength - 1 + signalLength - 1;
-
   const points: IndicatorPoint[] = [];
-  for (let i = 0; i < signalLine.length; i++) {
-    const candleIndex = startIndex + i;
+  for (let i = 0; i < parts.signalLine.length; i++) {
+    const candleIndex = parts.startIndex + i;
     if (candleIndex >= candles.length) break;
 
-    const macdValue = macdLine[i + histogramOffset];
-    const signalValue = signalLine[i];
+    const macdValue = parts.macdLine[i + parts.histogramOffset];
+    const signalValue = parts.signalLine[i];
     points.push({
       timestamp: candles[candleIndex].timestamp,
       value: macdValue - signalValue
