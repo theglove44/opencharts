@@ -291,6 +291,88 @@ The indicator will appear in the UI dropdown automatically.
 └── package.json
 ```
 
+## Production Deployment
+
+Deploy OpenCharts to run as a polished, always-on application without needing local terminal windows.
+
+### Recommended Stack (Free Tier)
+
+| Component | Platform | Free Tier Limits |
+|-----------|----------|------------------|
+| **API Backend** | [Railway](https://railway.app) | 500 hours/month, 512MB RAM |
+| **Web Frontend** | [Vercel](https://vercel.com) | Unlimited static, 100GB bandwidth |
+
+### Deploy Backend to Railway
+
+1. **Create a Railway account** at [railway.app](https://railway.app)
+
+2. **Create new project** from GitHub:
+   - Click "New Project" → "Deploy from GitHub repo"
+   - Select your `opencharts` repository
+   - Set the **Root Directory** to `apps/api`
+
+3. **Configure environment variables** in Railway dashboard:
+   ```
+   NODE_ENV=production
+   DATA_MODE=mock          # or 'alpaca' for live data
+   PORT=3001
+   HOST=0.0.0.0
+   
+   # If using Alpaca for live data:
+   ALPACA_API_KEY=your_key
+   ALPACA_API_SECRET=your_secret
+   ALPACA_BASE_URL=https://data.alpaca.markets
+   ```
+
+4. **Add persistent volume** (optional, for SQLite cache):
+   - Go to Settings → Volumes
+   - Mount at `/app/apps/api/data`
+
+5. **Deploy** - Railway will auto-detect the Dockerfile and build
+
+6. **Copy your API URL** (e.g., `https://opencharts-api.up.railway.app`)
+
+### Deploy Frontend to Vercel
+
+1. **Create a Vercel account** at [vercel.com](https://vercel.com)
+
+2. **Import project** from GitHub:
+   - Click "Add New" → "Project"
+   - Select your `opencharts` repository
+
+3. **Configure build settings**:
+   - **Framework Preset**: SvelteKit
+   - **Root Directory**: `apps/web`
+   - **Build Command**: `cd ../.. && pnpm --filter @oss-charts/core build && pnpm --filter @oss-charts/indicators build && pnpm --filter @oss-charts/web build`
+   - **Install Command**: `cd ../.. && pnpm install`
+
+4. **Set environment variable**:
+   ```
+   VITE_API_URL=https://your-railway-api-url.up.railway.app
+   ```
+
+5. **Deploy** - Vercel will build and deploy your frontend
+
+### Alternative Platforms
+
+| Platform | Good For | Notes |
+|----------|----------|-------|
+| **Fly.io** | API backend | Free tier: 3 shared VMs, use included Dockerfile |
+| **Render** | Full stack | Free tier: 750 hours/month, spin-down after 15min |
+| **Cloudflare Pages** | Frontend only | Unlimited requests, excellent CDN |
+| **Netlify** | Frontend only | 100GB bandwidth, good SvelteKit support |
+
+### Docker Deployment
+
+For self-hosted or other Docker platforms, use the included Dockerfile:
+
+```bash
+# Build and run the API
+cd apps/api
+docker build -t opencharts-api .
+docker run -p 3001:3001 -e DATA_MODE=mock opencharts-api
+```
+
 ## Development Commands
 
 Run from the repo root:

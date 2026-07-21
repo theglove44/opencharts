@@ -1,9 +1,9 @@
 import type { Candle } from '@oss-charts/core';
 import type { IndicatorPoint, IndicatorParams } from '../types';
-import { getSourceValue } from '../types';
+import { getSourceValue, normalizeLength } from '../types';
 
 export function calculateSMA(candles: Candle[], params: IndicatorParams): IndicatorPoint[] {
-  const length = Math.max(1, Math.floor(params.length));
+  const length = normalizeLength(params.length);
   if (candles.length < length) {
     return [];
   }

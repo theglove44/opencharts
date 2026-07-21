@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Candle } from '@oss-charts/core';
-import { calculateAnchoredVWAP, calculateEMA, calculateRSI, calculateSMA, calculateBollinger } from '../src/index';
+import {
+  calculateAnchoredVWAP,
+  calculateBollinger,
+  calculateEMA,
+  calculateRSI,
+  calculateSMA
+} from '../src/index';
 
 function makeCandles(values: number[]): Candle[] {
   const base = Date.UTC(2024, 0, 2, 14, 30, 0, 0);
@@ -36,11 +42,24 @@ describe('indicators', () => {
     expect(values).toEqual([100, 100, 100, 100, 100, 100, 100]);
   });
 
+  it('returns neutral RSI for a flat series', () => {
+    const candles = makeCandles([5, 5, 5, 5, 5]);
+    const points = calculateRSI(candles, { length: 3, source: 'close' });
+    expect(points.map((point) => point.value)).toEqual([50, 50]);
+  });
+
   it('calculates anchored VWAP', () => {
     const candles = makeCandles([10, 20, 30]);
     const points = calculateAnchoredVWAP(candles, { length: 1, source: 'close' });
     const values = points.map((point) => Number(point.value.toFixed(2)));
     expect(values).toEqual([10, 15, 20]);
+  });
+
+  it('returns no anchored VWAP points when anchor is after all candles', () => {
+    const candles = makeCandles([10, 20, 30]);
+    const anchorIso = new Date(candles[candles.length - 1].timestamp + 60_000).toISOString();
+    const points = calculateAnchoredVWAP(candles, { length: 1, source: 'close', anchorIso });
+    expect(points).toEqual([]);
   });
 
   it('calculates Bollinger Bands', () => {

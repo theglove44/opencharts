@@ -11,33 +11,37 @@
     "format": "prettier --write ."
   },
   "devDependencies": {
-    "@eslint/js": "^9.5.0",
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^25.9.1",
+    "@typescript-eslint/eslint-plugin": "^8.60.1",
+    "@typescript-eslint/parser": "^8.60.1",
+    "typescript-eslint": "^8.60.1",
     "concurrently": "^10.0.3",
-    "eslint": "^9.5.0",
-    "eslint-config-prettier": "^10.0.0",
-    "eslint-plugin-svelte": "^3.0.0",
-    "prettier": "^3.3.3",
-    "typescript-eslint": "^8.0.0",
-    "globals": "^16.0.0",
-    "svelte-eslint-parser": "^1.0.0",
-    "typescript": "^5.5.4",
-    "vitest": "^3.2.6"
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-svelte": "^3.19.0",
+    "globals": "^17.6.0",
+    "prettier": "^3.8.3",
+    "svelte-eslint-parser": "^1.8.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.8"
   },
-  "overrides": {
-    "devalue": "^5.8.1",
-    "cookie": "^0.7.2",
-    "rollup": "^4.62.0",
-    "ajv": "^8.20.0",
-    "minimatch": "^9.0.7",
-    "brace-expansion": "^2.1.1",
-    "picomatch": "^4.0.2",
-    "flatted": "^3.4.2",
-    "yaml": "^2.7.1",
-    "lodash": "^4.17.21",
-    "fast-uri": "^3.1.2",
-    "shell-quote": "^1.8.4",
-    "js-yaml": "^4.2.0",
-    "postcss": "^8.5.10",
-    "esbuild": "^0.28.1"
+  "pnpm": {
+    "overrides": {
+      "ajv@>=7.0.0-alpha.0 <8.18.0": "8.20.0",
+      "brace-expansion@<1.1.13": "1.1.13",
+      "cookie": "^0.7.2",
+      "devalue": "^5.8.1",
+      "fast-uri": "^3.1.2",
+      "flatted": "^3.4.2",
+      "js-yaml": "^4.2.0",
+      "lodash": "^4.17.21",
+      "minimatch": "^9.0.7",
+      "picomatch": "^4.0.2",
+      "postcss": "^8.5.15",
+      "rollup": "^4.62.0",
+      "shell-quote": "^1.8.4",
+      "yaml@>=1.0.0 <1.10.3": "1.10.3"
+    }
   }
 }

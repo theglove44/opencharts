@@ -19,6 +19,10 @@
   import ChartDrawings from './ChartDrawings.svelte';
   import type { Drawing, DrawingType } from '$lib/types/drawing';
 
+  type VisibleRangeHandler = Parameters<
+    ReturnType<IChartApi['timeScale']>['subscribeVisibleTimeRangeChange']
+  >[0];
+
   const dispatch = createEventDispatcher();
   const palette = ['#f97316', '#22c55e', '#0ea5e9', '#eab308', '#ef4444', '#8b5cf6'];
 
@@ -41,14 +45,12 @@
   let candleSeries: ISeriesApi<'Candlestick'> | null = null;
   let rsiChart: IChartApi | null = null;
 
-  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   let overlaySeries = new Map<string, ISeriesApi<'Line'>>();
-  // eslint-disable-next-line svelte/prefer-svelte-reactivity
   let rsiSeries = new Map<string, ISeriesApi<'Line'>>();
 
   let createChartFn: typeof import('lightweight-charts').createChart | null = null;
   let crosshairModeRef: typeof import('lightweight-charts').CrosshairMode | null = null;
-  let syncVisibleRange: ((range: unknown) => void) | null = null;
+  let syncVisibleRange: VisibleRangeHandler | null = null;
   let allowRangeSync = false;
 
   let candles: Candle[] = [];
@@ -59,8 +61,8 @@
   let fullRefreshTimer: ReturnType<typeof setInterval> | null = null;
   let refreshInFlight = false;
   let latestInFlight = false;
-  let noData = false;
   let anchorPickId: string | null = null;
+  let noData = false;
 
   const TICK_REFRESH_MS = 1_000;
   const BAR_REFRESH_MS = 60_000;
@@ -68,7 +70,7 @@
   $: {
     if (symbol || timeframe) {
       // Trigger refresh when props change
-      void refreshCandles(true);
+      refreshCandles(true);
     }
   }
 
@@ -85,17 +87,7 @@
   }
 
   $: if (chart && crosshairModeRef) {
-    // Reference crosshairSnap to make this reactive to its changes
-    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-    crosshairSnap;
-    applyCrosshairMode();
-  }
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  function generateId() {
-    return typeof crypto !== 'undefined' && 'randomUUID' in crypto
-      ? crypto.randomUUID()
-      : `id-${Math.random().toString(36).slice(2, 9)}`;
+    applyCrosshairMode(crosshairSnap);
   }
 
   function buildChart(container: HTMLDivElement) {
@@ -140,11 +132,11 @@
     return { chartApi, resizeObserver };
   }
 
-  function applyCrosshairMode() {
+  function applyCrosshairMode(snap = crosshairSnap) {
     if (!crosshairModeRef) {
       return;
     }
-    const mode = crosshairSnap ? crosshairModeRef.Magnet : crosshairModeRef.Normal;
+    const mode = snap ? crosshairModeRef.Magnet : crosshairModeRef.Normal;
     chart?.applyOptions({ crosshair: { mode } });
     rsiChart?.applyOptions({ crosshair: { mode } });
   }
@@ -226,10 +218,6 @@
     });
   }
 
-  function handleError(err: unknown) {
-    console.warn('Chart range sync error', err);
-  }
-
   function resetRsiChart() {
     if (!rsiContainer) {
       return;
@@ -258,7 +246,7 @@
     applyCrosshairMode();
 
     if (chart) {
-      syncVisibleRange = (range: { from: number | null; to: number | null }) => {
+      syncVisibleRange = (range) => {
         if (
           !allowRangeSync ||
           !range ||
@@ -270,9 +258,9 @@
           return;
         }
         try {
-          rsiChart.timeScale().setVisibleRange(range as unknown as import('lightweight-charts').Range<import('lightweight-charts').Time>);
-        } catch (err) {
-          handleError(err);
+          rsiChart.timeScale().setVisibleRange(range);
+        } catch {
+          return;
         }
       };
       chart.timeScale().subscribeVisibleTimeRangeChange(syncVisibleRange);
@@ -299,7 +287,6 @@
       const last = candles[candles.length - 1];
       crosshair = last ?? null;
     } catch (err) {
-      handleError(err);
       error = err instanceof Error ? err.message : 'Failed to load candles';
     } finally {
       if (showLoading) {
@@ -416,7 +403,7 @@
           return;
         }
         const data = param.seriesData.get(candleSeries);
-        // @ts-expect-error lightweight-charts seriesData type is opaque
+        // @ts-expect-error Lightweight Charts does not retain custom candle fields.
         const candle = data as Candle | undefined;
 
         if (candle && typeof candle.open === 'number') {
@@ -438,10 +425,13 @@
           return;
         }
         let timestampMs: number | null = null;
+        // @ts-expect-error Lightweight Charts exposes a union for business-day timestamps.
         if (typeof param.time === 'number') {
           timestampMs = param.time * 1000;
+          // @ts-expect-error Narrowed number timestamp is supported by Lightweight Charts.
         } else if (param.time && typeof param.time === 'object' && 'year' in param.time) {
-          const t = param.time as { year: number; month: number; day: number };
+          // @ts-expect-error Business-day shape is part of Lightweight Charts' time union.
+          const t = param.time;
           timestampMs = Date.UTC(t.year, t.month - 1, t.day);
         }
         if (!timestampMs) {
@@ -479,7 +469,7 @@
 
 <!-- svelte-ignore a11y-click-events-have-key-events -->
 <!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="chart-card" class:active={isActive} on:click={() => dispatch('activate')}>
+<div class="chart-card" class:active={isActive} data-chart-id={id} on:click={() => dispatch('activate')}>
   <div class="legend">
     <span class="legend-symbol">{symbol}</span>
     {#if crosshair}

@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import type { Timeframe } from '@oss-charts/core';
+  import type { PriceSource, Timeframe } from '@oss-charts/core';
   import { TIMEFRAMES } from '@oss-charts/core';
   import {
     indicatorRegistry,
     type IndicatorInstance,
+    type IndicatorParams,
     type IndicatorType,
+    isIndicatorType,
   } from '@oss-charts/indicators';
   import type { Drawing, DrawingType } from '$lib/types/drawing';
   import { fetchSymbols } from '$lib/api';
@@ -24,6 +26,7 @@
   }
 
   type LayoutType = 'single' | '1-2' | '2-1' | '2-2' | '1-3' | '3-1';
+  type IndicatorUpdater = (indicator: IndicatorInstance) => IndicatorInstance;
 
   // --- STATE ---
   let layout: LayoutType = 'single';
@@ -43,15 +46,6 @@
   let crosshairSnap = true;
   let activeTool: DrawingType | null = null;
 
-  // Crosshair Mode Reference (loaded dynamically)
-  let crosshairModeRef: typeof import('lightweight-charts').CrosshairMode | null = null;
-  let lwc: typeof import('lightweight-charts') | null = null;
-  // Both are read in onMount; eslint cannot see runtime usage in Svelte 5 legacy mode.
-  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  crosshairModeRef;
-  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  lwc;
-
   // Active chart getters for toolbar binding
   $: activeChart = charts.find((c) => c.id === activeChartId) || charts[0];
   $: activeSymbol = activeChart?.symbol || 'SPY';
@@ -60,6 +54,9 @@
   // --- STORAGE KEYS ---
   const STORAGE_KEY = 'oss-charts-state-v2';
   const PRESETS_KEY = 'oss-charts-presets';
+  const layoutTypes = ['single', '1-2', '2-1', '2-2', '1-3', '3-1'] as const;
+  const implementedDrawingTypes = ['trendline', 'horizontal_line', 'fibonacci'] as const;
+  const colorPattern = /^#[0-9a-f]{3,8}$/i;
 
   // --- INITIALIZATION ---
   function createId() {
@@ -76,18 +73,136 @@
       indicators: [
         { id: createId(), type: 'sma', params: { length: 20, source: 'close' } },
         { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } },
-        { id: createId(), type: 'rsi', params: { length: 14, source: 'close' } },
       ],
       drawings: [],
     };
   }
 
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function isTimeframe(value: unknown): value is Timeframe {
+    return typeof value === 'string' && TIMEFRAMES.includes(value as Timeframe);
+  }
+
+  function isLayoutType(value: unknown): value is LayoutType {
+    return typeof value === 'string' && layoutTypes.includes(value as LayoutType);
+  }
+
+  function isPriceSource(value: unknown): value is PriceSource {
+    return typeof value === 'string' && sources.includes(value as PriceSource);
+  }
+
+  function finiteNumber(value: unknown): number | null {
+    return typeof value === 'number' && Number.isFinite(value) ? value : null;
+  }
+
+  function positiveInteger(value: unknown, fallback: number): number {
+    const numberValue = finiteNumber(value);
+    return numberValue && numberValue > 0 ? Math.floor(numberValue) : fallback;
+  }
+
+  function sanitizeIndicator(value: unknown): IndicatorInstance | null {
+    if (!isRecord(value) || !isIndicatorType(value.type)) {
+      return null;
+    }
+
+    const def = indicatorRegistry[value.type];
+    const rawParams = isRecord(value.params) ? value.params : {};
+    const params: IndicatorParams = {
+      ...def.defaultParams,
+      source: isPriceSource(rawParams.source) ? rawParams.source : def.defaultParams.source,
+      length: positiveInteger(rawParams.length, def.defaultParams.length),
+    };
+
+    if (typeof rawParams.anchorIso === 'string' && Number.isFinite(Date.parse(rawParams.anchorIso))) {
+      params.anchorIso = rawParams.anchorIso;
+    }
+    if (finiteNumber(rawParams.macdFast)) params.macdFast = positiveInteger(rawParams.macdFast, 12);
+    if (finiteNumber(rawParams.macdSlow)) params.macdSlow = positiveInteger(rawParams.macdSlow, 26);
+    if (finiteNumber(rawParams.macdSignal)) params.macdSignal = positiveInteger(rawParams.macdSignal, 9);
+    if (finiteNumber(rawParams.stdDev)) params.stdDev = Math.max(0.1, rawParams.stdDev as number);
+
+    return {
+      id: typeof value.id === 'string' && value.id.length <= 80 ? value.id : createId(),
+      type: value.type,
+      params,
+    };
+  }
+
+  function sanitizeDrawing(value: unknown): Drawing | null {
+    if (!isRecord(value) || typeof value.type !== 'string') {
+      return null;
+    }
+    if (!implementedDrawingTypes.includes(value.type as (typeof implementedDrawingTypes)[number])) {
+      return null;
+    }
+
+    const points = Array.isArray(value.points)
+      ? value.points
+          .map((point) => {
+            if (!isRecord(point)) return null;
+            const timestamp = finiteNumber(point.timestamp);
+            const price = finiteNumber(point.price);
+            return timestamp !== null && price !== null ? { timestamp, price } : null;
+          })
+          .filter((point): point is { timestamp: number; price: number } => point !== null)
+          .slice(0, 2)
+      : [];
+
+    if (points.length === 0) {
+      return null;
+    }
+
+    const properties = isRecord(value.properties) ? value.properties : {};
+    const fibLevels = Array.isArray(properties.fibLevels)
+      ? properties.fibLevels
+          .filter((level): level is number => typeof level === 'number' && Number.isFinite(level))
+          .slice(0, 12)
+      : undefined;
+
+    return {
+      id: typeof value.id === 'string' && value.id.length <= 80 ? value.id : createId(),
+      type: value.type as DrawingType,
+      points,
+      properties: {
+        color:
+          typeof properties.color === 'string' && colorPattern.test(properties.color)
+            ? properties.color
+            : '#38bdf8',
+        lineWidth: Math.min(8, positiveInteger(properties.lineWidth, 2)),
+        lineStyle:
+          properties.lineStyle === 'dashed' || properties.lineStyle === 'dotted'
+            ? properties.lineStyle
+            : 'solid',
+        fibLevels,
+      },
+    };
+  }
+
+  function sanitizeChartState(value: unknown): ChartState | null {
+    if (!isRecord(value)) {
+      return null;
+    }
+    const indicators = Array.isArray(value.indicators)
+      ? value.indicators.map(sanitizeIndicator).filter((item): item is IndicatorInstance => item !== null)
+      : [];
+    const drawings = Array.isArray(value.drawings)
+      ? value.drawings.map(sanitizeDrawing).filter((item): item is Drawing => item !== null)
+      : [];
+
+    return {
+      id: typeof value.id === 'string' && value.id.length <= 80 ? value.id : createId(),
+      symbol: typeof value.symbol === 'string' ? value.symbol.slice(0, 16).toUpperCase() : 'SPY',
+      timeframe: isTimeframe(value.timeframe) ? value.timeframe : '5m',
+      indicators,
+      drawings,
+    };
+  }
+
   function loadState() {
     try {
-      // Try parsing URL first (reserved for future deep-linking)
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const url = new URL(window.location.href);
-
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) {
         // Default startup
@@ -96,27 +211,20 @@
         return;
       }
 
-      const parsed = JSON.parse(raw);
+      const parsed = JSON.parse(raw) as unknown;
       // Migration or Simple check
-      if (parsed.charts && Array.isArray(parsed.charts)) {
-        charts = parsed.charts.map((c: ChartState) => ({
-          ...c,
-          drawings: c.drawings || [],
-        }));
-        layout = parsed.layout || 'single';
-        activeChartId = parsed.activeChartId || charts[0]?.id;
-        syncSymbol = parsed.syncSymbol ?? false;
+      if (isRecord(parsed) && Array.isArray(parsed.charts)) {
+        const loadedCharts = parsed.charts
+          .map(sanitizeChartState)
+          .filter((chart): chart is ChartState => chart !== null);
+        charts = loadedCharts.length > 0 ? loadedCharts : [createChartState()];
+        layout = isLayoutType(parsed.layout) ? parsed.layout : 'single';
+        activeChartId = typeof parsed.activeChartId === 'string' ? parsed.activeChartId : charts[0]?.id;
+        syncSymbol = parsed.syncSymbol === true;
       } else {
         // Old format migration
-        charts = [
-          {
-            id: createId(),
-            symbol: parsed.symbol || 'SPY',
-            timeframe: parsed.timeframe || '5m',
-            indicators: parsed.indicators || [],
-            drawings: parsed.drawings || [],
-          },
-        ];
+        const migrated = sanitizeChartState(parsed);
+        charts = [migrated ?? createChartState()];
         activeChartId = charts[0].id;
       }
 
@@ -142,16 +250,6 @@
   }
 
   function updateChartsForLayout(newLayout: LayoutType) {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const countMap: Record<LayoutType, number> = {
-      single: 1,
-      '1-2': 2,
-      '2-1': 2,
-      '2-2': 4,
-      '1-3': 3,
-      '3-1': 3,
-    };
-
     let targetCount = 1;
     switch (newLayout) {
       case 'single':
@@ -260,7 +358,7 @@
     saveState();
   }
 
-  function updateIndicator(indId: string, updater: (cur: IndicatorInstance) => IndicatorInstance) {
+  function updateIndicator(indId: string, updater: IndicatorUpdater) {
     charts = charts.map((c) =>
       c.id === activeChartId
         ? {
@@ -274,9 +372,13 @@
 
   function handleSourceUpdate(indId: string, e: Event) {
     const target = e.currentTarget as HTMLSelectElement;
-    updateIndicator(indId, (c) => ({
-      ...c,
-      params: { ...c.params, source: target.value as (typeof sources)[number] },
+    const source = target.value;
+    if (!isPriceSource(source)) {
+      return;
+    }
+    updateIndicator(indId, (indicator) => ({
+      ...indicator,
+      params: { ...indicator.params, source },
     }));
   }
 
@@ -284,7 +386,20 @@
   function loadPresets() {
     try {
       const raw = localStorage.getItem(PRESETS_KEY);
-      if (raw) savedPresets = JSON.parse(raw);
+      const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+      savedPresets = Array.isArray(parsed)
+        ? parsed
+            .filter((preset): preset is Record<string, unknown> => isRecord(preset))
+            .map((preset) => ({
+              name: typeof preset.name === 'string' ? preset.name.slice(0, 80) : '',
+              indicators: Array.isArray(preset.indicators)
+                ? preset.indicators
+                    .map(sanitizeIndicator)
+                    .filter((indicator): indicator is IndicatorInstance => indicator !== null)
+                : [],
+            }))
+            .filter((preset) => preset.name.length > 0)
+        : [];
     } catch {
       savedPresets = [];
     }
@@ -299,9 +414,10 @@
     const existing = savedPresets.findIndex((p) => p.name === presetName.trim());
     const preset = {
       name: presetName.trim(),
-      indicators: JSON.parse(JSON.stringify(activeChart.indicators)).map((i: IndicatorInstance) => ({
-        ...i,
+      indicators: activeChart.indicators.map((indicator) => ({
+        ...indicator,
         id: createId(),
+        params: { ...indicator.params },
       })),
     };
 
@@ -334,10 +450,6 @@
 
   // --- COMPONENT LIFECYCLE ---
   onMount(async () => {
-    // Dynamically import LWC for prop passing
-    lwc = await import('lightweight-charts');
-    crosshairModeRef = lwc.CrosshairMode;
-
     loadState();
     loadPresets();
     fetchSymbols().then((syms) => (availableSymbols = syms));
@@ -349,16 +461,19 @@
     }
   });
 
-  // Anchor picking proxy
-  let viewportInstances = new Map<string, ChartViewport>();
-
   function handleAnchorPick(event: CustomEvent<{ id: string; timestampMs: number }>) {
+    // Logic for Anchor VWAP or similar
     const { id: indicatorId, timestampMs } = event.detail;
+    // We need to find which chart has this indicator.
+    // Actually the event comes from the active chart usually.
     updateIndicator(indicatorId, (cur) => ({
       ...cur,
       params: { ...cur.params, anchorIso: toLocalInputValue(timestampMs) },
     }));
   }
+
+  // We need a map of component instances to call methods on them
+  let viewportInstances: Record<string, ChartViewport> = {};
 
   function toggleFullscreen() {
     isFullscreen = !isFullscreen;
@@ -582,7 +697,7 @@
                     <button
                       class="anchor-btn"
                       on:click={() =>
-                        viewportInstances.get(activeChartId)?.beginAnchorPick(indicator.id)}
+                        viewportInstances[activeChartId]?.beginAnchorPick(indicator.id)}
                     >
                       Pick on Chart
                     </button>

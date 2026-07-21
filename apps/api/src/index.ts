@@ -3,22 +3,42 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import helmet from '@fastify/helmet';
 import rateLimit from '@fastify/rate-limit';
-import { TIMEFRAMES, Timeframe } from '@oss-charts/core';
+import { TIMEFRAMES } from '@oss-charts/core';
 import { createCandleStore } from './db';
 import { createAlpacaTradeStream } from './providers/alpaca-stream';
 import { createCandleService } from './services/candles';
 import { SUPPORTED_SYMBOLS } from './providers/mock';
+import {
+  type CandlesQuery,
+  normalizeDataMode,
+  validateCandleQuery,
+  validateSymbol
+} from './request-validation';
 
 const server = Fastify({ logger: true });
 
+function getCorsOrigin() {
+  const configured = process.env.API_CORS_ORIGIN || process.env.CORS_ORIGIN;
+  if (!configured) {
+    return process.env.NODE_ENV === 'production' ? false : true;
+  }
+  if (configured === '*') {
+    return true;
+  }
+  return configured
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 await server.register(cors, {
-  origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
-  credentials: true,
+  origin: getCorsOrigin(),
+  credentials: true
 });
 
 await server.register(rateLimit, {
   max: 100,
-  timeWindow: '1 minute',
+  timeWindow: '1 minute'
 });
 
 await server.register(helmet, {
@@ -33,14 +53,14 @@ await server.register(helmet, {
       objectSrc: ["'none'"],
       frameAncestors: ["'none'"],
       baseUri: ["'self'"],
-      formAction: ["'self'"],
-    },
-  },
+      formAction: ["'self'"]
+    }
+  }
 });
 
 const candleStore = createCandleStore();
 candleStore.invalidateToday();
-const dataMode = (process.env.DATA_MODE || 'mock').toLowerCase();
+const dataMode = normalizeDataMode();
 const tradeStream =
   dataMode === 'alpaca' ? createAlpacaTradeStream(['SPY']) : null;
 const candleService = createCandleService(candleStore, {
@@ -55,27 +75,6 @@ server.get('/health', async () => ({ ok: true }));
 
 server.get('/symbols', async () => SUPPORTED_SYMBOLS);
 
-type CandlesQuery = {
-  symbol?: string;
-  tf?: string;
-  from?: string;
-  to?: string;
-};
-
-const MAX_LOOKBACK_MS: Record<Timeframe, number> = {
-  '1m': 7 * 24 * 60 * 60_000,
-  '5m': 30 * 24 * 60 * 60_000,
-  '10m': 60 * 24 * 60 * 60_000,
-  '30m': 90 * 24 * 60 * 60_000,
-  '60m': 180 * 24 * 60 * 60_000,
-  '1d': 5 * 365 * 24 * 60 * 60_000,
-};
-
-function defaultLookbackMs(_timeframe: Timeframe) {
-  void _timeframe;
-  return 90 * 24 * 60 * 60_000;
-}
-
 server.get('/candles', {
   schema: {
     querystring: {
@@ -84,53 +83,28 @@ server.get('/candles', {
         symbol: { type: 'string', minLength: 1, maxLength: 16 },
         tf: { type: 'string', enum: TIMEFRAMES },
         from: { type: 'string', format: 'date-time' },
-        to: { type: 'string', format: 'date-time' },
-      },
-    },
-  },
-}, async (request, reply) => {
-  const { symbol = 'SPY', tf = '5m', from, to } = request.query as CandlesQuery;
-
-  // Only enforce supported symbols strict check in mock mode
-  if (dataMode === 'mock' && !SUPPORTED_SYMBOLS.includes(symbol)) {
-    reply.code(400);
-    return { error: `Unsupported symbol in mock mode. Supported: ${SUPPORTED_SYMBOLS.join(', ')}` };
-  }
-
-  if (!TIMEFRAMES.includes(tf as Timeframe)) {
-    reply.code(400);
-    return { error: 'Unsupported timeframe' };
-  }
-
-  const timeframe = tf as Timeframe;
-  const toMs = to ? Date.parse(to) : Date.now();
-  const fromMs = from ? Date.parse(from) : toMs - defaultLookbackMs(timeframe);
-
-  if (!Number.isFinite(fromMs) || !Number.isFinite(toMs) || fromMs >= toMs) {
-    reply.code(400);
-    return { error: 'Invalid time range' };
-  }
-
-  // Only cap date range when user explicitly provides both bounds
-  if (from && to) {
-    const rangeMs = toMs - fromMs;
-    const maxLookback = MAX_LOOKBACK_MS[timeframe];
-    if (rangeMs > maxLookback) {
-      const maxLookbackDays = Math.round(maxLookback / (24 * 60 * 60_000));
-      reply.code(400);
-      return { error: `Date range too large for ${timeframe} timeframe. Maximum: ${maxLookbackDays} days` };
+        to: { type: 'string', format: 'date-time' }
+      }
     }
+  }
+}, async (request, reply) => {
+  let validated;
+  try {
+    validated = validateCandleQuery(request.query as CandlesQuery, dataMode);
+  } catch (error) {
+    reply.code(400);
+    return { error: error instanceof Error ? error.message : 'Invalid candle query' };
   }
 
   try {
+    const { symbol, timeframe, fromMs, toMs } = validated;
     const candles = await candleService.getCandles(symbol, timeframe, fromMs, toMs);
     return {
       symbol,
       timeframe,
       candles
     };
-  } catch (_err) {
-    void _err;
+  } catch {
     // If provider fails (e.g. invalid symbol for Alpaca), return error
     reply.code(400);
     return { error: 'Failed to fetch candles. Symbol might be invalid.' };
@@ -142,16 +116,17 @@ server.get('/latest', {
     querystring: {
       type: 'object',
       properties: {
-        symbol: { type: 'string', minLength: 1, maxLength: 16 },
-      },
-    },
-  },
+        symbol: { type: 'string', minLength: 1, maxLength: 16 }
+      }
+    }
+  }
 }, async (request, reply) => {
-  const { symbol = 'SPY' } = request.query as CandlesQuery;
-
-  if (dataMode === 'mock' && !SUPPORTED_SYMBOLS.includes(symbol)) {
+  let symbol: string;
+  try {
+    symbol = validateSymbol((request.query as CandlesQuery).symbol, dataMode);
+  } catch (error) {
     reply.code(400);
-    return { error: `Unsupported symbol in mock mode. Supported: ${SUPPORTED_SYMBOLS.join(', ')}` };
+    return { error: error instanceof Error ? error.message : 'Invalid symbol' };
   }
 
   try {
@@ -166,8 +141,7 @@ server.get('/latest', {
       price: latest.price,
       timestamp: latest.timestamp
     };
-  } catch (_err) {
-    void _err;
+  } catch {
     reply.code(400);
     return { error: 'Failed to fetch latest trade.' };
   }

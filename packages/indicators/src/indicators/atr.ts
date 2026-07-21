@@ -1,5 +1,6 @@
 import type { Candle } from '@oss-charts/core';
 import type { IndicatorPoint, IndicatorParams } from '../types';
+import { normalizeLength } from '../types';
 
 function getTrueRange(candle: Candle, prevClose: number): number {
   const highLow = candle.high - candle.low;
@@ -9,7 +10,7 @@ function getTrueRange(candle: Candle, prevClose: number): number {
 }
 
 export function calculateATR(candles: Candle[], params: IndicatorParams): IndicatorPoint[] {
-  const length = Math.max(1, Math.floor(params.length));
+  const length = normalizeLength(params.length);
   if (candles.length < length + 1) {
     return [];
   }

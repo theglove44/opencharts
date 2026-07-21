@@ -7,14 +7,14 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "luxon": "^3.5.0"
+    "luxon": "^3.7.2"
   },
   "scripts": {
+    "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "lint": "eslint src"
   },
   "devDependencies": {
-    "@types/luxon": "^3.7.1",
-    "@types/node": "^25.0.9"
+    "@types/luxon": "^3.7.1"
   }
 }

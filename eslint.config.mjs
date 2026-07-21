@@ -7,7 +7,6 @@ import prettierConfig from 'eslint-config-prettier/flat';
 import globals from 'globals';
 
 export default tseslint.config(
-  // Global ignore patterns
   {
     ignores: [
       '**/node_modules/**',
@@ -18,28 +17,28 @@ export default tseslint.config(
       'apps/api/data/*'
     ]
   },
-
-  // JS recommended rules
   js.configs.recommended,
-
-  // TypeScript recommended rules
   ...tseslint.configs.recommended,
-
-  // Svelte flat recommended configuration
   ...svelte.configs['flat/recommended'],
-
-  // Svelte-specific: use svelte-eslint-parser with TS parser inside
   {
     files: ['**/*.svelte'],
     languageOptions: {
       parser: svelteParser,
-      parserOptions: {
-        parser: tsParser
-      }
+      parserOptions: { parser: tsParser }
+    },
+    rules: {
+      'svelte/prefer-svelte-reactivity': 'off'
     }
   },
-
-  // Global language options (replaces env: { es2022: true, node: true, browser: true })
+  {
+    files: ['**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }
+      ]
+    }
+  },
   {
     languageOptions: {
       ecmaVersion: 'latest',
@@ -50,7 +49,5 @@ export default tseslint.config(
       }
     }
   },
-
-  // Prettier integration — must be last to override formatting rules
   prettierConfig
 );

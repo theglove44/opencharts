@@ -11,7 +11,7 @@ export function isRegularSessionMinute(timestampMs: number): boolean {
   const hour = dt.hour;
   const minute = dt.minute;
   const afterOpen = hour > 9 || (hour === 9 && minute >= 30);
-  const beforeClose = hour < 16 || (hour === 16 && minute === 0);
+  const beforeClose = hour < 16;
   return afterOpen && beforeClose;
 }
 
