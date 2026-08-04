@@ -32,16 +32,17 @@
       "brace-expansion@<1.1.13": "1.1.13",
       "cookie": "^0.7.2",
       "devalue": "^5.8.1",
-      "fast-uri": "^3.1.2",
+      "fast-uri": "^3.1.4",
       "flatted": "^3.4.2",
       "js-yaml": "^4.2.0",
       "lodash": "^4.17.21",
       "minimatch": "^9.0.7",
       "picomatch": "^4.0.2",
-      "postcss": "^8.5.15",
+      "postcss": "^8.5.18",
       "rollup": "^4.62.0",
-      "shell-quote": "^1.8.4",
-      "yaml@>=1.0.0 <1.10.3": "1.10.3"
+      "shell-quote": "^1.9.0",
+      "yaml@>=1.0.0 <1.10.3": "1.10.3",
+      "find-my-way": "^9.7.0"
     }
   }
 }

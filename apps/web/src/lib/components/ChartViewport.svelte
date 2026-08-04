@@ -425,12 +425,9 @@
           return;
         }
         let timestampMs: number | null = null;
-        // @ts-expect-error Lightweight Charts exposes a union for business-day timestamps.
         if (typeof param.time === 'number') {
           timestampMs = param.time * 1000;
-          // @ts-expect-error Narrowed number timestamp is supported by Lightweight Charts.
         } else if (param.time && typeof param.time === 'object' && 'year' in param.time) {
-          // @ts-expect-error Business-day shape is part of Lightweight Charts' time union.
           const t = param.time;
           timestampMs = Date.UTC(t.year, t.month - 1, t.day);
         }
