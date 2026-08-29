@@ -7,3 +7,4 @@ apps/api/data/cache.sqlite*
 apps/web/.env
 apps/web/build
 apps/api/.env
+.central-brain.json
