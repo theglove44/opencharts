@@ -1,0 +1,65 @@
+:root {
+  /* Color tokens */
+  --bg-page: #020617;
+  --bg-mid: #0f172a;
+  --bg-top: #1e293b;
+
+  --surface: rgba(15, 23, 42, 0.75);
+  --surface-card-from: rgba(15, 23, 42, 0.8);
+  --surface-card-to: rgba(15, 23, 42, 0.5);
+  --surface-panel: rgba(2, 6, 23, 0.96);
+  --surface-inset: rgba(255, 255, 255, 0.03);
+  --surface-field: rgba(15, 23, 42, 0.8);
+
+  --border-subtle: rgba(148, 163, 184, 0.15);
+  --border-default: rgba(148, 163, 184, 0.3);
+  --border-strong: rgba(148, 163, 184, 0.35);
+
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --accent: #38bdf8;
+  --accent-soft: rgba(56, 189, 248, 0.15);
+  --accent-border: rgba(56, 189, 248, 0.35);
+  --teal: #5eead4;
+  --teal-soft: rgba(94, 234, 212, 0.15);
+  --teal-border: rgba(94, 234, 212, 0.5);
+
+  --up: #22c55e;
+  --up-bright: #4ade80;
+  --down: #ef4444;
+  --down-bright: #f87171;
+  --danger-text: #fca5a5;
+
+  --grid-line: rgba(148, 163, 184, 0.15);
+  --watermark: rgba(148, 163, 184, 0.04);
+
+  /* Spacing scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+
+  /* Radii */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-2xl: 16px;
+  --radius-pill: 999px;
+
+  /* Typography */
+  --font-sans: 'Space Grotesk', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: radial-gradient(circle at top, var(--bg-top) 0%, var(--bg-mid) 45%, var(--bg-page) 100%);
+  color: var(--text-primary);
+  min-height: 100vh;
+}

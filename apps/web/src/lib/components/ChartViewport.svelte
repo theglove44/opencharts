@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, createEventDispatcher } from 'svelte';
+  import { onMount } from 'svelte';
 
   import type { IChartApi, ISeriesApi } from 'lightweight-charts';
   import type { Candle, Timeframe } from '@oss-charts/core';
@@ -15,34 +15,60 @@
     type IndicatorDefinition,
     type IndicatorInstance,
   } from '@oss-charts/indicators';
-  import { fetchCandles, fetchLatestPrice } from '$lib/api';
+  import { fetchCandles } from '$lib/api';
+  import { subscribeLatestPrice, type PriceUpdate } from '$lib/state/price-ticker.svelte';
   import ChartDrawings from './ChartDrawings.svelte';
   import type { Drawing, DrawingType } from '$lib/types/drawing';
+
+  interface Props {
+    id: string;
+    symbol: string;
+    timeframe?: Timeframe;
+    indicators?: IndicatorInstance[];
+    isActive?: boolean;
+    crosshairSnap?: boolean;
+    activeTool?: DrawingType | null;
+    drawings?: Drawing[];
+    onactivate?: () => void;
+    onpickanchor?: (detail: { id: string; timestampMs: number }) => void;
+    oncreate?: (drawing: Drawing) => void;
+    ondelete?: (drawingId: string) => void;
+  }
 
   type VisibleRangeHandler = Parameters<
     ReturnType<IChartApi['timeScale']>['subscribeVisibleTimeRangeChange']
   >[0];
 
-  const dispatch = createEventDispatcher();
   const palette = ['#f97316', '#22c55e', '#0ea5e9', '#eab308', '#ef4444', '#8b5cf6'];
 
-  export let id: string;
-  export let symbol: string;
-  export let timeframe: Timeframe = '5m';
-  export let indicators: IndicatorInstance[] = [];
-  export let isActive = false;
-  export let crosshairSnap = true;
-  export let activeTool: DrawingType | null = null;
-  export let drawings: Drawing[] = [];
+  // Recomputing every indicator series on each price tick is wasteful; a short
+  // throttle keeps oscillator/overlay tails fresh without per-second full sweeps.
+  const INDICATOR_SYNC_MS = 3_000;
+  const BAR_REFRESH_MS = 60_000;
+
+  let {
+    id,
+    symbol,
+    timeframe = '5m',
+    indicators = [],
+    isActive = false,
+    crosshairSnap = true,
+    activeTool = null,
+    drawings = [],
+    onactivate,
+    onpickanchor,
+    oncreate,
+    ondelete,
+  }: Props = $props();
 
   let chartContainer: HTMLDivElement | null = null;
-  let rsiContainer: HTMLDivElement | null = null;
+  let rsiContainer: HTMLDivElement | null = $state(null);
 
-  let width = 0;
-  let height = 0;
+  let width = $state(0);
+  let height = $state(0);
 
-  let chart: IChartApi | null = null;
-  let candleSeries: ISeriesApi<'Candlestick'> | null = null;
+  let chart: IChartApi | null = $state(null);
+  let candleSeries: ISeriesApi<'Candlestick'> | null = $state(null);
   let rsiChart: IChartApi | null = null;
 
   let overlaySeries = new Map<string, ISeriesApi<'Line'>>();
@@ -54,41 +80,15 @@
   let allowRangeSync = false;
 
   let candles: Candle[] = [];
-  let loading = false;
-  let error = '';
-  let crosshair: Candle | null = null;
-  let refreshTimer: ReturnType<typeof setInterval> | null = null;
-  let fullRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  let loading = $state(false);
+  let error = $state('');
+  let crosshair = $state<Candle | null>(null);
   let refreshInFlight = false;
-  let latestInFlight = false;
+  let fullRefreshPending = false;
   let anchorPickId: string | null = null;
-  let noData = false;
-
-  const TICK_REFRESH_MS = 1_000;
-  const BAR_REFRESH_MS = 60_000;
-
-  $: {
-    if (symbol || timeframe) {
-      // Trigger refresh when props change
-      refreshCandles(true);
-    }
-  }
-
-  $: {
-    if (indicators) {
-      // Debounce or just check diff?
-      // For simplicity, rebuild on change, but check if chart exists
-      if (chart) {
-        // We need to handle rsi chart creation/deletion if indicators change pane type
-        resetRsiChart();
-        rebuildIndicators();
-      }
-    }
-  }
-
-  $: if (chart && crosshairModeRef) {
-    applyCrosshairMode(crosshairSnap);
-  }
+  let noData = $state(false);
+  let ready = $state(false);
+  let lastIndicatorSync = 0;
 
   function buildChart(container: HTMLDivElement) {
     if (!createChartFn || !crosshairModeRef) {
@@ -141,6 +141,36 @@
     rsiChart?.applyOptions({ crosshair: { mode } });
   }
 
+  $effect(() => {
+    if (chart && crosshairModeRef) {
+      applyCrosshairMode(crosshairSnap);
+    }
+  });
+
+  $effect(() => {
+    if (chart && ready) {
+      void indicators;
+      resetRsiChart();
+      rebuildIndicators();
+    }
+  });
+
+  // Data loading is driven solely by this effect; `ready` gates it so we never
+  // fetch before the series exists and never fetch twice on mount.
+  $effect(() => {
+    if (ready) {
+      void symbol;
+      void timeframe;
+      refreshCandles(true);
+    }
+  });
+
+  // One subscription per chart; identical symbols across charts share a poll.
+  $effect(() => {
+    if (!ready || !candleSeries) return;
+    return subscribeLatestPrice(symbol, applyLatestPrice);
+  });
+
   function rebuildIndicators() {
     if (!chart || !candleSeries) {
       return;
@@ -171,7 +201,7 @@
           });
           overlaySeries.set(seriesKey, series);
         } else {
-          if (!rsiChart || !rsiContainer) {
+          if (!rsiChart) {
             return;
           }
           const series = rsiChart.addLineSeries({
@@ -189,6 +219,8 @@
   }
 
   function updateIndicatorData() {
+    lastIndicatorSync = Date.now();
+
     indicators.forEach((indicator) => {
       const def = indicatorRegistry[indicator.type];
       const values = def.compute(candles, indicator.params);
@@ -284,8 +316,7 @@
       candleSeries?.setData(toCandlestickData(candles));
       updateIndicatorData();
       allowRangeSync = candles.length > 0;
-      const last = candles[candles.length - 1];
-      crosshair = last ?? null;
+      crosshair = candles[candles.length - 1] ?? null;
     } catch (err) {
       error = err instanceof Error ? err.message : 'Failed to load candles';
     } finally {
@@ -293,41 +324,44 @@
         loading = false;
       }
       refreshInFlight = false;
+
+      if (fullRefreshPending) {
+        fullRefreshPending = false;
+        refreshCandles(false);
+      }
     }
   }
 
-  async function refreshLatestPrice() {
-    if (latestInFlight || refreshInFlight || candles.length === 0) {
+  function applyLatestPrice(update: PriceUpdate) {
+    if (candles.length === 0) {
       return;
     }
-    latestInFlight = true;
-    try {
-      const latest = await fetchLatestPrice(symbol);
-      if (!latest) {
-        return;
-      }
-      const last = candles[candles.length - 1];
-      const bucketMs = getTimeframeMs(timeframe);
-      if (latest.timestamp >= last.timestamp + bucketMs) {
-        refreshCandles(false);
-        return;
-      }
-      if (latest.timestamp < last.timestamp) {
-        return;
-      }
+    const last = candles[candles.length - 1];
+    const bucketMs = getTimeframeMs(timeframe);
 
-      const updated = {
-        ...last,
-        close: latest.price,
-        high: Math.max(last.high, latest.price),
-        low: Math.min(last.low, latest.price),
-      };
+    if (update.timestamp >= last.timestamp + bucketMs) {
+      // A new bar started; request a full refill (coalesced while in flight).
+      fullRefreshPending = true;
+      refreshCandles(false);
+      return;
+    }
+    if (update.timestamp < last.timestamp) {
+      return;
+    }
 
-      candles = [...candles.slice(0, -1), updated];
-      candleSeries?.update(toCandlestickPoint(updated));
+    const updated: Candle = {
+      ...last,
+      close: update.price,
+      high: Math.max(last.high, update.price),
+      low: Math.min(last.low, update.price),
+    };
+
+    candles = [...candles.slice(0, -1), updated];
+    candleSeries?.update(toCandlestickPoint(updated));
+    crosshair = updated;
+
+    if (Date.now() - lastIndicatorSync >= INDICATOR_SYNC_MS) {
       updateIndicatorData();
-    } finally {
-      latestInFlight = false;
     }
   }
 
@@ -419,7 +453,7 @@
       });
 
       chart.subscribeClick((param) => {
-        dispatch('activate'); // Activate chart on click
+        onactivate?.();
 
         if (!anchorPickId || !param.time) {
           return;
@@ -435,26 +469,25 @@
           return;
         }
 
-        dispatch('pickAnchor', { id: anchorPickId, timestampMs });
+        onpickanchor?.({ id: anchorPickId, timestampMs });
         anchorPickId = null;
       });
 
       resetRsiChart();
       rebuildIndicators();
-      refreshCandles(true);
-      refreshTimer = setInterval(() => {
-        refreshLatestPrice();
-      }, TICK_REFRESH_MS);
-      fullRefreshTimer = setInterval(() => {
-        refreshCandles(false);
+      ready = true;
+
+      const fullRefreshTimer = setInterval(() => {
+        if (!document.hidden) {
+          refreshCandles(false);
+        }
       }, BAR_REFRESH_MS);
 
       cleanup = () => {
         main.resizeObserver.disconnect();
         chart?.remove();
         rsiChart?.remove();
-        if (refreshTimer) clearInterval(refreshTimer);
-        if (fullRefreshTimer) clearInterval(fullRefreshTimer);
+        clearInterval(fullRefreshTimer);
       };
     })();
 
@@ -464,15 +497,14 @@
   });
 </script>
 
-<!-- svelte-ignore a11y-click-events-have-key-events -->
-<!-- svelte-ignore a11y-no-static-element-interactions -->
-<div class="chart-card" class:active={isActive} data-chart-id={id} on:click={() => dispatch('activate')}>
+<!-- svelte-ignore a11y_click_events_have_key_events -->
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div class="chart-card" class:active={isActive} data-chart-id={id} onclick={() => onactivate?.()}>
   <div class="legend">
     <span class="legend-symbol">{symbol}</span>
     {#if crosshair}
       <div class="ohlc-values">
-        <span class="ohlc-value">O <span class="ohlc-price">{crosshair.open.toFixed(2)}</span></span
-        >
+        <span class="ohlc-value">O <span class="ohlc-price">{crosshair.open.toFixed(2)}</span></span>
         <span class="ohlc-value ohlc-high"
           >H <span class="ohlc-price">{crosshair.high.toFixed(2)}</span></span
         >
@@ -514,8 +546,8 @@
       {activeTool}
       {width}
       {height}
-      on:create
-      on:delete
+      {oncreate}
+      {ondelete}
     />
   {/if}
 
@@ -537,7 +569,7 @@
   {/if}
 
   {#if indicators.some((indicator) => indicatorRegistry[indicator.type].pane === 'separate')}
-    <div class="rsi-section">
+    <div class="oscillator-section">
       <div class="legend">
         <span class="legend-title">Oscillators</span>
         {#each indicators.filter((indicator) => indicatorRegistry[indicator.type].pane === 'separate') as indicator (indicator.id)}
@@ -559,10 +591,10 @@
 <style>
   .chart-card {
     position: relative;
-    background: linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(15, 23, 42, 0.5) 100%);
-    border: 1px solid rgba(148, 163, 184, 0.15);
-    border-radius: 16px;
-    padding: 16px;
+    background: linear-gradient(135deg, var(--surface-card-from) 0%, var(--surface-card-to) 100%);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-2xl);
+    padding: var(--space-4);
     display: flex;
     flex-direction: column;
     flex: 1;
@@ -580,7 +612,7 @@
   }
 
   .chart-card.active {
-    border-color: #38bdf8;
+    border-color: var(--accent);
     box-shadow:
       0 0 0 2px rgba(56, 189, 248, 0.25),
       0 8px 32px rgba(0, 0, 0, 0.3);
@@ -588,44 +620,42 @@
 
   .ohlc-values {
     display: flex;
-    gap: 8px;
-    margin-right: 12px;
+    gap: var(--space-2);
+    margin-right: var(--space-3);
     font-size: 12px;
     font-weight: 500;
   }
 
   .chart-overlay {
     position: absolute;
-    top: 16px;
-    left: 16px;
-    right: 16px;
+    top: var(--space-4);
+    left: var(--space-4);
+    right: var(--space-4);
     pointer-events: none;
     z-index: 5;
     display: flex;
-    justify-content: center; /* Center watermark */
+    justify-content: center;
     align-items: center;
-    height: 100%; /* Cover full chart area for watermark centering? */
+    height: 100%;
   }
 
-  /* .ohlc-overlay styles removed/replaced by chart-overlay */
-
   .ohlc-price {
-    font-family: 'JetBrains Mono', monospace;
+    font-family: var(--font-mono);
     font-weight: 500;
-    color: #e2e8f0;
+    color: var(--text-primary);
   }
 
   .ohlc-high .ohlc-price {
-    color: #4ade80;
+    color: var(--up-bright);
   }
   .ohlc-low .ohlc-price {
-    color: #f87171;
+    color: var(--down-bright);
   }
   .ohlc-up .ohlc-price {
-    color: #22c55e;
+    color: var(--up);
   }
   .ohlc-down .ohlc-price {
-    color: #ef4444;
+    color: var(--down);
   }
 
   .chart {
@@ -636,17 +666,16 @@
   }
 
   .chart.small {
-    /* height: 100%; */
     min-height: 150px;
   }
 
-  .rsi-section {
+  .oscillator-section {
     display: flex;
     flex-direction: column;
-    flex: 0 0 160px; /* fixed height for RSI section? */
-    margin-top: 8px;
-    border-top: 1px solid rgba(148, 163, 184, 0.1);
-    padding-top: 8px;
+    flex: 0 0 160px;
+    margin-top: var(--space-2);
+    border-top: 1px solid var(--border-subtle);
+    padding-top: var(--space-2);
   }
 
   .chart-watermark {
@@ -656,7 +685,7 @@
     transform: translate(-50%, -50%);
     font-size: 80px;
     font-weight: 700;
-    color: rgba(148, 163, 184, 0.04);
+    color: var(--watermark);
     pointer-events: none;
     user-select: none;
     letter-spacing: 0.05em;
@@ -665,36 +694,36 @@
   .legend {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     flex-wrap: wrap;
     font-size: 12px;
-    margin-bottom: 8px;
+    margin-bottom: var(--space-2);
     min-height: 24px;
     z-index: 6;
     position: relative;
-    pointer-events: none; /* Let clicks pass through to chart */
+    pointer-events: none;
   }
 
   .legend-title {
-    margin-right: 4px;
+    margin-right: var(--space-1);
     opacity: 0.5;
     pointer-events: auto;
   }
 
   .legend-symbol {
     font-weight: 700;
-    margin-right: 8px;
+    margin-right: var(--space-2);
     font-size: 14px;
-    color: #e2e8f0;
+    color: var(--text-primary);
     pointer-events: auto;
   }
 
   .legend-item {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 2px 8px;
-    border-radius: 999px;
+    gap: var(--space-2);
+    padding: 2px var(--space-2);
+    border-radius: var(--radius-pill);
     background: rgba(148, 163, 184, 0.1);
     border: 1px solid color-mix(in srgb, var(--indicator-color) 40%, transparent);
     color: var(--indicator-color);
@@ -718,23 +747,23 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 16px;
+    gap: var(--space-4);
     font-size: 14px;
     background: rgba(2, 6, 23, 0.75);
     backdrop-filter: blur(4px);
-    border-radius: 16px;
+    border-radius: var(--radius-2xl);
     z-index: 20;
   }
 
   .loading-overlay {
-    color: #94a3b8;
+    color: var(--text-secondary);
   }
 
   .loading-spinner {
     width: 32px;
     height: 32px;
     border: 3px solid rgba(148, 163, 184, 0.2);
-    border-top-color: #5eead4;
+    border-top-color: var(--teal);
     border-radius: 50%;
     animation: spin 0.8s linear infinite;
   }
@@ -746,11 +775,11 @@
   }
 
   .overlay.error {
-    color: #fca5a5;
+    color: var(--danger-text);
   }
 
   .overlay.no-data {
-    color: #94a3b8;
+    color: var(--text-secondary);
     background: rgba(15, 23, 42, 0.9);
   }
   .no-data-icon {
@@ -758,7 +787,7 @@
     opacity: 0.2;
   }
   .highlight {
-    color: #38bdf8;
+    color: var(--accent);
     font-weight: 700;
   }
   .sub-text {

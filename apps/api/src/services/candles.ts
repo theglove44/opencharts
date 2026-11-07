@@ -63,6 +63,12 @@ export function createCandleService(
     fromMs: number,
     toMs: number
   ): Promise<Candle[]> {
+    // Daily bars are fetched at native granularity in Alpaca mode; resampling
+    // multi-year ranges from 1m candles would need millions of bars.
+    if (getMode() === 'alpaca' && timeframe === '1d') {
+      return fetchAlpacaCandles(symbol, fromMs, toMs, '1Day');
+    }
+
     const candles = await getOneMinuteCandles(symbol, fromMs, toMs);
     if (timeframe === '1m') {
       return candles;
