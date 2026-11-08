@@ -54,7 +54,8 @@ async function fetchWithRetry(url: string, options: RequestInit): Promise<Respon
 export async function fetchAlpacaCandles(
   symbol: string,
   fromMs: number,
-  toMs: number
+  toMs: number,
+  alpacaTimeframe = '1Min'
 ): Promise<Candle[]> {
   const apiKey = process.env.ALPACA_API_KEY;
   const apiSecret = process.env.ALPACA_API_SECRET;
@@ -75,7 +76,7 @@ export async function fetchAlpacaCandles(
     }
 
     const url = buildAlpacaUrl(baseUrl, `v2/stocks/${encodeURIComponent(symbol)}/bars`);
-    url.searchParams.set('timeframe', '1Min');
+    url.searchParams.set('timeframe', alpacaTimeframe);
     url.searchParams.set('start', new Date(fromMs).toISOString());
     url.searchParams.set('end', new Date(toMs).toISOString());
     url.searchParams.set('adjustment', 'raw');

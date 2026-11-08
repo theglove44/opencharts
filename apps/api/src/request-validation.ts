@@ -1,10 +1,12 @@
 import { TIMEFRAMES, type Timeframe } from '@oss-charts/core';
 import { SUPPORTED_SYMBOLS } from './providers/mock';
 
-const DEFAULT_MAX_CANDLE_RANGE_DAYS = 120;
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * MINUTE_MS;
 const SYMBOL_PATTERN = /^[A-Z][A-Z0-9.-]{0,15}$/;
+// Per-timeframe policy for how much history the frontend may request. The
+// MAX_CANDLE_RANGE_DAYS env var acts as an explicit operator cap on top of
+// this; when unset, this table alone governs the allowed range.
 const MAX_LOOKBACK_DAYS: Record<Timeframe, number> = {
   '1m': 7,
   '5m': 30,
@@ -30,20 +32,15 @@ export type ValidatedCandleQuery = {
   toMs: number;
 };
 
-function getEnvNumber(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) {
-    return fallback;
-  }
-  const value = Number(raw);
-  return Number.isFinite(value) && value > 0 ? value : fallback;
-}
-
 export function getMaxCandleRangeMs(timeframe: Timeframe): number {
-  return Math.min(
-    getEnvNumber('MAX_CANDLE_RANGE_DAYS', DEFAULT_MAX_CANDLE_RANGE_DAYS) * DAY_MS,
-    MAX_LOOKBACK_DAYS[timeframe] * DAY_MS
-  );
+  const raw = process.env.MAX_CANDLE_RANGE_DAYS;
+  if (raw) {
+    const value = Number(raw);
+    if (Number.isFinite(value) && value > 0) {
+      return Math.min(value * DAY_MS, MAX_LOOKBACK_DAYS[timeframe] * DAY_MS);
+    }
+  }
+  return MAX_LOOKBACK_DAYS[timeframe] * DAY_MS;
 }
 
 export function normalizeDataMode(value = process.env.DATA_MODE): DataMode {

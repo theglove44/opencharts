@@ -31,6 +31,17 @@ export default tseslint.config(
     }
   },
   {
+    files: ['**/*.svelte.ts'],
+    rules: {
+      // Module-level Map/Set registries here are plain (non-reactive) plumbing.
+      'svelte/prefer-svelte-reactivity': 'off'
+    }
+  },
+  {
+    files: ['**/*.svelte.ts'],
+    languageOptions: { parser: tsParser }
+  },
+  {
     files: ['**/*.ts'],
     rules: {
       '@typescript-eslint/no-unused-vars': [
